@@ -1,0 +1,31 @@
+[package]
+name = "goride"
+description = "GoRide — planificateur d'itinéraires vélo"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[lib]
+name = "goride_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+goride-core = { path = "../crates/goride-core" }
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Bibliothèque des sorties (SQLite embarqué, aucune installation)
+rusqlite = { version = "0.32", features = ["bundled"] }
+bincode = "1"
+# Archive d'export Strava (fichiers .gz, activities.csv)
+flate2 = "1"
+csv = "1"
+# Lecture des itinéraires enregistrés (GPX + données GoRide)
+roxmltree = "0.20"
+# Téléchargement des régions OpenStreetMap (Geofabrik)
+ureq = "2"

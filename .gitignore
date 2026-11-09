@@ -1,0 +1,24 @@
+# Dépendances et fichiers compilés
+node_modules/
+dist/
+target/
+src-tauri/gen/
+
+# Journaux, fichiers système, éditeurs
+*.log
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+
+# Données locales : extraits OpenStreetMap (lourds, re-téléchargeables)
+# et sorties personnelles (FIT / GPX / TCX). Rien de tout ça ne part sur GitHub.
+/data/
+
+# Anciennes sauvegardes locales
+_archives/
+_backup*/
+
+# Executables fabriques par build-exe.bat
+/release/

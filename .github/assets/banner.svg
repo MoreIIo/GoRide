@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="420" viewBox="0 0 1280 420">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0a0a0b"/>
+      <stop offset="1" stop-color="#17171a"/>
+    </linearGradient>
+    <linearGradient id="fill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fc4c02" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#fc4c02" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="line" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ff6a26"/>
+      <stop offset="1" stop-color="#fc4c02"/>
+    </linearGradient>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M40 0H0V40" fill="none" stroke="#ffffff" stroke-opacity="0.04"/>
+    </pattern>
+  </defs>
+  <rect width="1280" height="420" rx="24" fill="url(#bg)"/>
+  <rect width="1280" height="420" rx="24" fill="url(#grid)"/>
+  <!-- profil altimétrique -->
+  <path d="M0 372 L90 356 L170 364 L250 336 L330 346 L420 312 L500 320 L580 280 L640 290 L720 195 L790 212 L860 120 L930 160 L1010 210 L1090 190 L1180 240 L1280 225 L1280 420 L0 420 Z" fill="url(#fill)"/>
+  <path d="M0 372 L90 356 L170 364 L250 336 L330 346 L420 312 L500 320 L580 280 L640 290 L720 195 L790 212 L860 120 L930 160 L1010 210 L1090 190 L1180 240 L1280 225" fill="none" stroke="url(#line)" stroke-width="5" stroke-linejoin="round" stroke-linecap="round"/>
+  <circle cx="860" cy="120" r="11" fill="#ffffff"/>
+  <circle cx="860" cy="120" r="24" fill="#ffffff" fill-opacity="0.12"/>
+  <!-- texte -->
+  <text x="80" y="150" font-family="Inter Tight, Inter, Segoe UI, Helvetica, Arial, sans-serif" font-size="96" font-weight="800" fill="#f4f4f5" letter-spacing="-3">Go<tspan fill="#fc4c02">Ride</tspan></text>
+  <text x="84" y="200" font-family="Inter Tight, Inter, Segoe UI, Helvetica, Arial, sans-serif" font-size="28" font-weight="500" fill="#a1a1aa">Trace. Roule. Progresse.</text>
+  <text x="84" y="240" font-family="Inter Tight, Inter, Segoe UI, Helvetica, Arial, sans-serif" font-size="20" fill="#71717a">Planificateur vélo route · triathlon · gravel — 100 % local</text>
+</svg>

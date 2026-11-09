@@ -1,0 +1,485 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>GoRide</title>
+  </head>
+  <body class="booting">
+    <!-- Écran d'ouverture : le logo se dessine, puis le rideau s'ouvre sur la carte -->
+    <div id="intro" aria-hidden="true">
+      <div class="intro-inner">
+        <svg class="intro-mark" viewBox="0 0 32 32"><path d="M5 23 11.5 12l5 6.5L22 8.5 27 23" /><circle cx="22" cy="8.5" r="2.2" /></svg>
+        <div class="intro-word"><span>G</span><span>O</span><span>R</span><span>I</span><span>D</span><span>E</span></div>
+        <div class="intro-line"><i></i></div>
+        <p class="intro-tag">Planifier <b>·</b> Rouler <b>·</b> Progresser</p>
+      </div>
+    </div>
+
+    <header class="topbar">
+      <nav class="nav glass" aria-label="Menus">
+        <div class="brand">
+          <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M5 23 11.5 12l5 6.5L22 8.5 27 23" /><circle cx="22" cy="8.5" r="2.2" /></svg>
+          <span>GoRide</span>
+        </div>
+        <div class="menus" role="tablist" aria-label="Section">
+          <button data-mode="routes" class="menu-btn active" role="tab" aria-expanded="true" title="Itinéraires : cliquer à nouveau pour replier le menu">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 19.5a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM18 8.5a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM8 17.5h7.5a3 3 0 0 0 0-6h-7a3 3 0 0 1 0-6H16" /></svg>
+            <span>Itinéraires</span>
+            <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+          </button>
+          <button data-mode="rides" class="menu-btn" role="tab" aria-expanded="false" title="Sorties : cliquer à nouveau pour replier le menu">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3 8 4-16 3 8h4" /></svg>
+            <span>Sorties</span>
+            <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+          </button>
+          <button data-mode="coach" class="menu-btn" role="tab" aria-expanded="false" title="Coach : cliquer à nouveau pour replier le menu">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.9L12 15.5l-1.9-4.6L5.5 9l4.6-1.4L12 3zM18 15l.9 2.1L21 18l-2.1.9L18 21l-.9-2.1L15 18l2.1-.9L18 15z" /></svg>
+            <span>Coach</span>
+            <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+          </button>
+        </div>
+      </nav>
+
+      <div class="search glass" role="search">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14ZM20 20l-4-4" /></svg>
+        <input id="search" type="search" placeholder="Rechercher un lieu, une adresse…" autocomplete="off" spellcheck="false" aria-label="Rechercher un lieu" aria-controls="search-results" />
+        <kbd>Ctrl K</kbd>
+        <ul id="search-results" class="search-results glass hidden" role="listbox" aria-label="Lieux trouvés"></ul>
+      </div>
+
+      <div class="top-right">
+        <button id="net" class="net glass" title="Réseau routier utilisé pour tracer" aria-expanded="false" aria-controls="net-menu">
+          <span class="dot"></span><span id="net-label">Réseau : aucun</span>
+        </button>
+        <div id="net-menu" class="net-menu glass hidden" role="dialog" aria-label="Réseau routier">
+          <p class="eyebrow">Réseau routier</p>
+          <p id="nm-current" class="nm-current">—</p>
+          <p class="hint small">La région se charge toute seule là où tu traces (avec ses voisines près d'une frontière).</p>
+          <section class="nm-france">
+            <div class="nm-france-head">
+              <b>Toute la France</b>
+              <span id="nm-france-meta"></span>
+            </div>
+            <div class="nm-bar" aria-hidden="true"><i id="nm-bar"></i></div>
+            <p id="nm-progress" class="nm-progress hidden"></p>
+            <button id="nm-prepare" class="btn primary small full">Préparer toute la France</button>
+            <button id="nm-download" class="btn ghost small full">Seulement télécharger les 22 régions</button>
+            <button id="nm-cancel" class="btn ghost small full hidden">Annuler le téléchargement</button>
+            <p class="hint small">
+              <b>Préparer</b> : tout est téléchargé puis assemblé en un seul réseau, routable partout et rechargé au démarrage.
+              La première fois, compte un bon moment (environ 4,6 Go à télécharger, puis le relief) et beaucoup de mémoire.<br />
+              <b>Télécharger</b> seulement : les régions se prépareront ensuite sans attente de téléchargement.
+            </p>
+          </section>
+          <button id="nm-file" class="nm-link">Choisir un fichier .osm.pbf à la main…</button>
+          <p class="nm-credits">
+            Cartes © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">contributeurs OpenStreetMap</a>,
+            <a href="https://openfreemap.org" target="_blank" rel="noreferrer">OpenFreeMap</a>,
+            <a href="https://opentopomap.org" target="_blank" rel="noreferrer">OpenTopoMap</a>,
+            <a href="https://www.ign.fr" target="_blank" rel="noreferrer">IGN</a> ·
+            Relief <a href="https://github.com/tilezen/joerd/blob/master/docs/attribution.md" target="_blank" rel="noreferrer">Mapzen Terrain Tiles</a> ·
+            Réseau routier <a href="https://download.geofabrik.de" target="_blank" rel="noreferrer">Geofabrik</a>
+          </p>
+        </div>
+        <div class="segmented basemaps glass" role="radiogroup" aria-label="Fond de carte">
+          <button data-basemap="route" class="active" role="radio">Carte</button>
+          <button data-basemap="topo" role="radio">Topo</button>
+          <button data-basemap="satellite" role="radio">Satellite</button>
+        </div>
+      </div>
+    </header>
+
+    <main class="stage">
+      <div id="map"></div>
+      <div class="vignette" aria-hidden="true"></div>
+
+      <!-- Commandes de vue : 2D / 3D, zoom, nord, relief -->
+      <nav id="dock" class="dock glass" aria-label="Vue de la carte">
+        <div id="view-switch" class="view-switch" role="radiogroup" aria-label="Vue">
+          <i class="thumb" aria-hidden="true"></i>
+          <button data-view="2d" class="active" role="radio" title="Vue à plat (2)">2D</button>
+          <button data-view="3d" role="radio" title="Relief en 3D (3) — ou clic droit + glisser pour incliner">3D</button>
+        </div>
+        <span class="sep"></span>
+        <button id="btn-zoom-in" class="dock-btn" title="Zoom avant">
+          <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>
+        </button>
+        <button id="btn-zoom-out" class="dock-btn" title="Zoom arrière">
+          <svg viewBox="0 0 24 24"><path d="M5 12h14" /></svg>
+        </button>
+        <button id="btn-north" class="dock-btn compass" title="Remettre le nord en haut">
+          <svg id="compass-needle" viewBox="0 0 24 24"><path class="n" d="M12 3l3.2 9H8.8z" /><path class="s" d="M12 21l-3.2-9h6.4z" /></svg>
+        </button>
+        <span class="sep"></span>
+        <button id="tg-hillshade" class="dock-btn on" aria-pressed="true" title="Ombrage du relief">
+          <svg viewBox="0 0 24 24"><path d="M3 19 9.5 8l4 6.5L16 11l5 8z" /></svg>
+        </button>
+      </nav>
+
+      <aside id="stats" class="card glass stats route-only hidden">
+        <p class="eyebrow">Itinéraire</p>
+        <h2 id="track-name" class="editable" title="Cliquer pour renommer">—</h2>
+        <button id="btn-save" class="btn primary full save-btn" title="Enregistrer dans Mes itinéraires (Ctrl+S)">
+          <svg class="ic-save" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h11l3 3v13H5zM8 4v5h7V4M8 20v-6h8v6" /></svg>
+          <svg class="ic-ok" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5" /></svg>
+          <span id="btn-save-label">Enregistrer</span>
+        </button>
+        <dl>
+          <div class="hero"><dt>Distance</dt><dd id="st-dist">—</dd></div>
+          <div><dt>Dénivelé +</dt><dd id="st-up">—</dd></div>
+          <div><dt>Dénivelé −</dt><dd id="st-down">—</dd></div>
+          <div><dt>Alt. min / max</dt><dd id="st-alt">—</dd></div>
+          <div>
+            <dt>Temps à <input id="in-speed" type="number" min="10" max="150" step="1" value="27" /> km/h</dt>
+            <dd id="st-time">—</dd>
+          </div>
+        </dl>
+        <section id="points" class="points hidden" aria-label="Points du tracé">
+          <div class="points-head">
+            <button id="points-toggle" class="points-title" aria-expanded="true" aria-controls="points-body">
+              <span>Points du tracé</span>
+              <small id="points-meta"></small>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 15 6-6 6 6" /></svg>
+            </button>
+            <button id="points-reverse" class="btn ghost small" title="Inverser le sens de l'itinéraire">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4v16M3 8l4-4 4 4M17 20V4M13 16l4 4 4-4" /></svg>
+              Inverser
+            </button>
+          </div>
+          <div id="points-body">
+            <p class="hint small">Glisse une ligne pour réorganiser · clic sur la carte pour ajouter un point</p>
+            <ol id="points-list" class="points-list"></ol>
+          </div>
+        </section>
+        <div id="route-extra" class="route-extra hidden">
+          <div class="bar" id="surf-bar"></div>
+          <ul class="legend" id="surf-legend"></ul>
+          <details>
+            <summary>Types de route</summary>
+            <ul class="classes" id="class-list"></ul>
+          </details>
+        </div>
+        <div class="row actions-row">
+          <button id="btn-fit" class="btn ghost small" title="Recentrer la carte sur le tracé">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" /></svg>
+            Recentrer
+          </button>
+          <span class="spacer"></span>
+          <span class="export-label">Exporter</span>
+          <button id="btn-export" class="btn ghost small" title="Fichier GPX à l'endroit de ton choix">GPX</button>
+          <button id="btn-export-fit" class="btn ghost small" title="Parcours pour compteur Garmin : à copier dans le dossier Garmin/NewFiles du compteur">Garmin</button>
+        </div>
+      </aside>
+
+      <aside id="loop-panel" class="card glass loop-panel route-only hidden">
+        <div class="loop-head">
+          <div>
+            <p class="eyebrow">Boucle automatique</p>
+            <h2>Où va-t-on ?</h2>
+          </div>
+          <button id="loop-close" class="icon-btn" title="Fermer (Échap)">
+            <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18" /></svg>
+          </button>
+        </div>
+        <div id="loop-workout" class="loop-workout hidden">
+          <div><span class="eyebrow">Pour la séance</span><b id="loop-workout-name"></b><small id="loop-workout-need"></small></div>
+          <button id="loop-workout-clear" class="icon-btn" title="Boucle ordinaire, sans séance" aria-label="Retirer la séance">
+            <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18" /></svg>
+          </button>
+        </div>
+        <p id="loop-hint" class="hint">Clique sur la carte pour choisir le départ.</p>
+        <div class="field">
+          <span class="label">Distance</span>
+          <span class="km-input"><input id="loop-km" type="number" min="5" max="300" step="5" value="50" /> km</span>
+        </div>
+        <div class="field">
+          <span class="label">Direction</span>
+          <select id="loop-dir">
+            <option value="">Indifférente</option>
+            <option value="0">Nord</option>
+            <option value="45">Nord-est</option>
+            <option value="90">Est</option>
+            <option value="135">Sud-est</option>
+            <option value="180">Sud</option>
+            <option value="225">Sud-ouest</option>
+            <option value="270">Ouest</option>
+            <option value="315">Nord-ouest</option>
+          </select>
+        </div>
+        <p class="hint small">Les réglages du tracé (profil, dénivelé, grands axes…) s'appliquent aux boucles.</p>
+        <button id="loop-go" class="btn primary full" disabled>Proposer des boucles</button>
+        <ol id="loop-list" class="loop-list"></ol>
+        <button id="loop-more" class="btn ghost small full hidden">Autres propositions</button>
+      </aside>
+
+
+      <aside id="library-panel" class="card glass library-panel route-only hidden" aria-label="Mes itinéraires">
+        <div class="loop-head">
+          <div>
+            <p class="eyebrow">Bibliothèque <span id="library-count" class="count"></span></p>
+            <h2>Mes itinéraires</h2>
+          </div>
+          <button id="library-close" class="icon-btn" title="Fermer (Échap)">
+            <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18" /></svg>
+          </button>
+        </div>
+        <label id="library-filter-box" class="lib-filter hidden">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14ZM20 20l-4-4" /></svg>
+          <input id="library-filter" type="search" placeholder="Filtrer par nom…" autocomplete="off" spellcheck="false" aria-label="Filtrer les itinéraires" />
+        </label>
+        <p id="library-empty" class="hint"></p>
+        <ul id="library-list" class="library-list"></ul>
+        <div class="lib-foot">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2.5h8.5A1.5 1.5 0 0 1 21 9v9.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5z" /></svg>
+          <span id="library-path" class="lib-path">Dossier non choisi</span>
+          <button id="library-reveal" class="icon-btn" title="Ouvrir le dossier dans l'Explorateur" aria-label="Ouvrir le dossier">
+            <svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" /></svg>
+          </button>
+          <button id="library-change" class="btn ghost small">Changer</button>
+        </div>
+      </aside>
+
+      <aside id="rides-panel" class="card glass rides-panel ride-only">
+        <div class="rides-head">
+          <div>
+            <p class="eyebrow">Journal</p>
+            <h2>Mes sorties</h2>
+          </div>
+          <div class="row">
+            <button id="btn-athlete" class="icon-btn" title="Mon profil : FTP, FC max, poids">
+              <svg viewBox="0 0 24 24"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0" /></svg>
+            </button>
+            <button id="btn-progress" class="btn small" title="Forme, fatigue, vitesse sur le plat…">Progression</button>
+            <button id="btn-ride-import" class="btn primary small" title="Fichiers .fit, .gpx ou .tcx de ton compteur">Importer</button>
+          </div>
+        </div>
+        <div id="athlete-form" class="athlete hidden">
+          <label><span>FTP</span><input id="ath-ftp" type="number" min="50" max="600" placeholder="?" /> W</label>
+          <label><span>FC max</span><input id="ath-hr" type="number" min="120" max="230" placeholder="?" /> bpm</label>
+          <label><span>Poids</span><input id="ath-weight" type="number" min="30" max="150" step="0.5" placeholder="?" /> kg</label>
+          <p class="hint small">Laisse vide si tu ne sais pas : la FTP réglée sur ton Garmin est utilisée, et les conseils proposent des estimations d'après tes sorties.</p>
+        </div>
+        <div id="import-menu" class="import-menu hidden">
+          <button id="imp-files" class="btn ghost small full">Des fichiers (.fit, .gpx, .tcx)</button>
+          <button id="imp-folder" class="btn ghost small full">Un dossier entier</button>
+          <p class="hint small">
+            Dossier : <code>Garmin/Activity</code> du compteur branché en USB, ou l'archive Strava décompressée
+            (Strava → Paramètres → Mon compte → Télécharger ou supprimer votre compte → Demander une archive). Seules les
+            sorties vélo sont gardées.
+          </p>
+        </div>
+        <p id="import-status" class="hint hidden"></p>
+        <p id="rides-empty" class="hint">
+          Aucune sortie pour l'instant. Branche ton compteur en USB et importe les fichiers <b>.fit</b> du dossier
+          <code>Garmin/Activity</code>, ou glisse-les sur la carte.
+        </p>
+        <ul id="rides-list" class="rides-list"></ul>
+      </aside>
+
+      <aside id="ride-detail" class="card glass ride-detail ride-only hidden"></aside>
+
+      <aside id="coach-panel" class="card glass coach-panel coach-only" aria-label="Coach">
+        <div class="coach-head">
+          <div>
+            <p class="eyebrow">IA locale · sur ton PC</p>
+            <h2>Coach</h2>
+          </div>
+          <div class="row">
+            <button id="coach-model" class="coach-model" title="Modèle utilisé (cliquer pour vérifier à nouveau)"><i></i><span>Vérification…</span></button>
+          </div>
+        </div>
+        <div id="coach-setup" class="coach-setup hidden"></div>
+        <div class="segmented full" id="coach-tabs" role="tablist">
+          <button data-tab="chat" class="active" role="tab">Discussion</button>
+          <button data-tab="workouts" role="tab">Séances</button>
+        </div>
+        <section id="coach-chat" class="coach-chat">
+          <div id="coach-msgs" class="coach-msgs" aria-live="polite"></div>
+          <form id="coach-form" class="coach-compose">
+            <textarea id="coach-input" rows="1" placeholder="Pose ta question au coach…" aria-label="Question au coach"></textarea>
+            <div class="coach-compose-tools">
+              <button type="button" id="coach-clear" class="icon-btn" title="Effacer la discussion" aria-label="Effacer la discussion">
+                <svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" /></svg>
+              </button>
+              <button type="submit" id="coach-send" class="send-btn" title="Envoyer (Entrée)" aria-label="Envoyer">
+                <svg class="i-send" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+                <svg class="i-stop" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" /></svg>
+              </button>
+            </div>
+          </form>
+        </section>
+        <section id="coach-workouts" class="coach-workouts hidden">
+          <form id="wk-form" class="wk-form">
+            <label for="wk-wish">Créer une séance avec le coach</label>
+            <div class="wk-ask">
+              <input id="wk-wish" type="text" placeholder="Ex. 1 h 15, travailler les côtes" autocomplete="off" />
+              <button id="wk-go" class="btn primary small" type="submit">Créer</button>
+            </div>
+            <p id="wk-status" class="hint small hidden"></p>
+          </form>
+          <h3>Mes séances</h3>
+          <ul id="wk-mine" class="wk-list"></ul>
+          <h3>Séances types</h3>
+          <ul id="wk-templates" class="wk-list"></ul>
+        </section>
+      </aside>
+
+      <aside id="coach-float" class="card glass coach-float hidden" aria-label="Réponse du coach" aria-live="polite">
+        <header>
+          <span class="eyebrow">Coach</span>
+          <div class="row">
+            <button id="coach-float-open" class="btn ghost small">Continuer la discussion</button>
+            <button id="coach-float-close" class="icon-btn" title="Fermer" aria-label="Fermer"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18" /></svg></button>
+          </div>
+        </header>
+        <div id="coach-float-body" class="coach-float-body"></div>
+      </aside>
+
+      <aside id="workout-panel" class="card glass ride-detail workout-panel coach-only hidden" aria-label="Séance"></aside>
+
+      <aside id="progress-panel" class="card glass progress-panel ride-only hidden">
+        <div class="progress-head">
+          <div>
+            <p class="eyebrow">Tendances</p>
+            <h2>Progression</h2>
+          </div>
+          <div class="row">
+            <div class="segmented small" id="progress-period">
+              <button data-v="90" class="active">3 mois</button>
+              <button data-v="180">6 mois</button>
+              <button data-v="365">1 an</button>
+              <button data-v="0">Tout</button>
+            </div>
+            <button id="progress-close" class="icon-btn" title="Fermer">
+              <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18" /></svg>
+            </button>
+          </div>
+        </div>
+        <div id="progress-body"></div>
+      </aside>
+
+
+      <!-- Outils de tracé en bas : la barre remonte au-dessus du profil quand il s'affiche -->
+      <div id="tooldock" class="tooldock route-only">
+        <aside id="settings" class="glass settings hidden" aria-label="Réglages du tracé">
+          <div class="settings-head">
+            <span>Réglages du tracé</span>
+            <button id="settings-toggle" class="icon-btn" title="Fermer les réglages" aria-label="Fermer les réglages">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+            </button>
+          </div>
+          <div class="settings-body">
+            <div class="segmented full" id="opt-profile" role="radiogroup" aria-label="Profil">
+              <button data-v="Road" class="active" title="Goudron uniquement, petites routes préférées">Route</button>
+              <button data-v="Triathlon" title="Goudron lisse, peu de carrefours, de ronds-points et de traversées de ville">Triathlon</button>
+              <button data-v="Gravel" title="Chemins et pistes acceptés, même recherchés">Gravel</button>
+            </div>
+
+            <div class="field-col">
+              <span class="label">Dénivelé</span>
+              <div class="segmented full" id="opt-hills" role="radiogroup" aria-label="Dénivelé">
+                <button data-v="-1">Le plus plat</button>
+                <button data-v="0" class="active">Équilibré</button>
+                <button data-v="1">Les bosses</button>
+              </div>
+            </div>
+
+            <div class="field-col">
+              <span class="label">Grands axes</span>
+              <div class="segmented full" id="opt-traffic" role="radiogroup" aria-label="Grands axes">
+                <button data-v="0">Indifférent</button>
+                <button data-v="0.5" class="active">Limiter</button>
+                <button data-v="1">Les fuir</button>
+              </div>
+            </div>
+
+            <div class="field-col">
+              <span class="label">Pistes cyclables</span>
+              <div class="segmented full" id="opt-cycle" role="radiogroup" aria-label="Pistes cyclables">
+                <button data-v="-1">Éviter</button>
+                <button data-v="0" class="active">Neutre</button>
+                <button data-v="1">Préférer</button>
+              </div>
+            </div>
+
+            <div class="field">
+              <span class="label">Pente max</span>
+              <select id="opt-grade">
+                <option value="0">Pas de limite</option>
+                <option value="6">6 %</option>
+                <option value="8">8 %</option>
+                <option value="10">10 %</option>
+                <option value="12">12 %</option>
+                <option value="15">15 %</option>
+              </select>
+            </div>
+
+            <p id="opt-note" class="note hidden">Relief indisponible pour ce réseau : dénivelé et pente max sont sans effet.</p>
+          </div>
+        </aside>
+
+        <p id="empty" class="hint-bar glass hidden"><b id="empty-title"></b><span id="empty-text"></span></p>
+
+        <div id="toolbar" class="toolbar glass" role="toolbar" aria-label="Outils de tracé">
+          <button id="btn-import" class="btn primary" title="Importer un fichier GPX (Ctrl+O)">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14" /></svg>
+            <span class="lbl">Importer</span>
+          </button>
+          <button id="btn-draw" class="btn ghost" title="Tracer un itinéraire en cliquant sur la carte (T)">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l4-1 11-11-3-3L5 16l-1 4zM14 6l3 3" /></svg>
+            <span class="lbl">Tracer</span>
+          </button>
+          <button id="btn-loop" class="btn ghost" title="Proposer des boucles depuis un point de départ (B)">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4a8 8 0 1 0 8 8M20 4v5h-5" /></svg>
+            <span class="lbl">Boucle</span>
+          </button>
+          <button id="btn-library" class="btn ghost" title="Mes itinéraires enregistrés (L)">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2.5h8.5A1.5 1.5 0 0 1 21 9v9.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5z" /></svg>
+            <span class="lbl">Mes itinéraires</span>
+          </button>
+          <div id="draw-tools" class="tools hidden">
+            <button id="btn-undo" class="icon-btn" title="Annuler (Ctrl+Z)" aria-label="Annuler" disabled>
+              <svg viewBox="0 0 24 24"><path d="M9 14 4 9l5-5M4 9h11a5 5 0 0 1 0 10h-3" /></svg>
+            </button>
+            <button id="btn-redo" class="icon-btn" title="Rétablir (Ctrl+Y)" aria-label="Rétablir" disabled>
+              <svg viewBox="0 0 24 24"><path d="m15 14 5-5-5-5M20 9H9a5 5 0 0 0 0 10h3" /></svg>
+            </button>
+            <button id="btn-clear" class="icon-btn" title="Effacer l'itinéraire" aria-label="Effacer l'itinéraire">
+              <svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" /></svg>
+            </button>
+          </div>
+          <span class="tsep" aria-hidden="true"></span>
+          <button id="btn-settings" class="btn ghost" aria-expanded="false" aria-controls="settings" title="Réglages du tracé">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1M15 4v4M9 10v4M17 16v4" /></svg>
+            <span id="btn-settings-label" class="lbl">Route</span>
+            <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 15 6-6 6 6" /></svg>
+          </button>
+        </div>
+      </div>
+
+      <div id="drop" class="drop hidden">
+        <div class="drop-box glass">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5ZM14 3v5h5M12 11v6M9 14l3-3 3 3" /></svg>
+          <b>Dépose ton fichier</b>
+          <span>.gpx pour un itinéraire · .fit, .tcx pour une sortie</span>
+        </div>
+      </div>
+      <div id="toast" class="toast hidden" role="alert"></div>
+    </main>
+
+    <section id="profile" class="profile glass route-only hidden" aria-label="Profil altimétrique">
+      <canvas id="profile-canvas"></canvas>
+      <div id="profile-tip" class="tip hidden"></div>
+    </section>
+
+    <section id="ride-chart" class="profile glass ride-chart ride-only hidden" aria-label="Courbes de la sortie">
+      <div class="chart-tabs segmented small" id="chart-tabs"></div>
+      <canvas id="ride-canvas"></canvas>
+      <div id="ride-tip" class="tip hidden"></div>
+    </section>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

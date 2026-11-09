@@ -1,0 +1,26 @@
+[package]
+name = "goride-core"
+description = "Cœur de calcul de GoRide : traces, réseau routier, routage, altitude"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+gpx = "0.10"
+serde = { version = "1", features = ["derive"] }
+thiserror = "2"
+# Réseau routier
+osmpbf = "0.3"
+rayon = "1"
+rstar = "0.12"
+bincode = "1"
+# Altitude (tuiles Terrarium)
+ureq = "2"
+png = "0.17"
+# Sorties (FIT, GPX, TCX)
+fitparser = "0.10"
+roxmltree = "0.20"
+
+[dev-dependencies]
+serde_json = "1"

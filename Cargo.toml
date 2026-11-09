@@ -1,0 +1,27 @@
+[workspace]
+members = ["crates/goride-core", "src-tauri"]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+version = "0.1.0"
+authors = ["Maëlle Leynaud"]
+license = "MIT"
+
+[profile.dev.package."*"]
+# Dépendances compilées optimisées même en mode dev : l'appli reste fluide pendant le développement.
+opt-level = 2
+
+# Le cœur de GoRide aussi (lecture du réseau, assemblage, calcul des itinéraires) :
+# « "*" » ne concerne que les dépendances, pas les crates du projet. Sans cette ligne,
+# tout tournait 10 à 50 fois plus lentement en mode développement (npm run tauri dev).
+[profile.dev.package.goride-core]
+opt-level = 3
+
+[profile.dev.package.goride]
+opt-level = 2
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
