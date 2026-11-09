@@ -4317,3 +4317,192 @@ body.mode-rides .coach-float {
   opacity: 0;
   transform: rotate(-90deg) scale(0.6);
 }
+
+
+/* --- Version téléphone ------------------------------------------------------------------ */
+/* Le coach IA tourne avec Ollama sur un PC : il n'existe pas encore sur mobile. */
+body.mobile [data-mode="coach"],
+body.mobile #coach-float,
+body.mobile #ride-coach { display: none !important; }
+
+/* Encoches, caméra, barre d'état et barre de gestes : l'appli dessine sous ces zones,
+   on garde donc une marge. env() donne la vraie valeur ; le minimum couvre les WebView
+   Android qui ne la fournissent pas. */
+body.mobile {
+  --gap: 10px;
+  --bar-h: 46px;
+  --safe-t: max(env(safe-area-inset-top, 0px), 40px);
+  --safe-b: max(env(safe-area-inset-bottom, 0px), 18px);
+  --dock-w: 46px;
+  --rail: calc(var(--gap) + var(--dock-w) + 8px);
+  --basemaps-h: 34px;
+  /* barre du haut + rangée des fonds de carte */
+  --top: calc(var(--safe-t) + var(--bar-h) + 8px + var(--basemaps-h) + 10px);
+  --left-w: calc(100vw - var(--gap) - var(--rail));
+  --profile-h: 150px;
+  --chart-h: 170px;
+}
+/* Le voile sombre des bords écrasait toute la carte sur un écran étroit */
+body.mobile .vignette {
+  background: linear-gradient(180deg, rgba(5, 5, 6, 0.45) 0%, rgba(5, 5, 6, 0) 14%);
+}
+
+/* --- Barre du haut : menus | recherche | réseau + options ----------------------------- */
+body.mobile .topbar {
+  top: var(--safe-t);
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  height: var(--bar-h);
+}
+body.mobile .nav {
+  flex: none;
+  height: var(--bar-h);
+  padding: 0 2px;
+}
+body.mobile .nav .brand {
+  display: none;
+}
+body.mobile .menu-btn {
+  padding: 0 10px;
+}
+body.mobile .menu-btn .chev {
+  display: none;
+}
+body.mobile .search {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
+  height: var(--bar-h);
+  margin: 0;
+  padding: 0 10px;
+  gap: 8px;
+}
+body.mobile .search input {
+  min-width: 0;
+  font-size: 16px; /* en dessous de 16 px, iOS zoome sur le champ */
+}
+body.mobile .top-right {
+  flex: none;
+  gap: 6px;
+}
+body.mobile .top-right .net,
+body.mobile .opt-btn {
+  width: var(--bar-h);
+  height: var(--bar-h);
+  padding: 0;
+  justify-content: center;
+}
+body.mobile #net-label {
+  display: none;
+}
+body.mobile .search-results {
+  left: 0;
+  right: 0;
+  width: auto;
+  max-height: 50vh;
+}
+/* Menus et fonds de carte se placent par rapport à la barre entière (pas en « fixed » :
+   l'animation d'ouverture de la barre les décalerait). */
+body.mobile .top-right {
+  position: static;
+}
+body.mobile .net-menu,
+body.mobile .options-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  width: auto;
+  max-width: none;
+  max-height: calc(100vh - var(--safe-t) - var(--bar-h) - var(--safe-b) - 24px);
+  overflow-y: auto;
+}
+
+/* Fonds de carte : petite rangée sous la barre, à gauche */
+body.mobile .top-right .basemaps {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  height: var(--basemaps-h);
+}
+body.mobile .top-right .basemaps button {
+  padding: 0 12px;
+  font-size: 13px;
+}
+
+/* --- Dock de vue (2D/3D, zoom, nord, relief) : colonne fine à droite -------------------- */
+body.mobile .dock {
+  top: calc(var(--safe-t) + var(--bar-h) + 8px);
+  right: var(--gap);
+  width: var(--dock-w);
+  padding: 4px;
+}
+body.mobile .dock-btn {
+  width: 38px;
+  height: 38px;
+}
+
+/* --- Panneaux : toute la largeur à gauche du dock, sous la barre ------------------------ */
+body.mobile .stats,
+body.mobile .loop-panel,
+body.mobile .library-panel,
+body.mobile .rides-panel {
+  left: var(--gap);
+  width: auto;
+  right: var(--rail);
+  padding: 16px 14px 14px 16px;
+}
+body.mobile .stats,
+body.mobile .loop-panel {
+  max-height: calc(100% - var(--top) - var(--safe-b) - var(--reserve) - 80px);
+}
+body.mobile .library-panel,
+body.mobile .rides-panel,
+body.mobile .ride-detail,
+body.mobile .progress-panel {
+  bottom: calc(var(--safe-b) + var(--reserve));
+}
+/* Le détail d'une sortie et la progression recouvrent la liste */
+body.mobile .ride-detail,
+body.mobile .progress-panel {
+  left: var(--gap);
+  right: var(--rail);
+  width: auto;
+  z-index: 4;
+  padding: 16px;
+}
+body.mobile .card h2 {
+  white-space: normal;
+}
+
+/* --- Bas de l'écran : barre d'outils, profil, messages ------------------------------- */
+body.mobile .tooldock {
+  bottom: calc(var(--safe-b) + var(--reserve));
+  max-width: calc(100% - 2 * var(--gap));
+}
+body.mobile .toolbar .btn,
+body.mobile .toolbar .icon-btn {
+  height: 46px;
+  min-width: 46px;
+}
+body.mobile .tooldock .settings {
+  width: calc(100vw - 2 * var(--gap));
+  max-height: calc(100vh - var(--top) - var(--safe-b) - var(--reserve) - 70px);
+}
+body.mobile .profile {
+  bottom: var(--safe-b);
+  width: calc(100% - 2 * var(--gap));
+}
+body.mobile .toast {
+  bottom: calc(var(--safe-b) + var(--reserve) + 70px);
+  max-width: calc(100% - 2 * var(--gap));
+}
+body.mobile .maplibregl-ctrl-bottom-left,
+body.mobile .maplibregl-ctrl-bottom-right {
+  bottom: calc(var(--safe-b) + var(--reserve) + 56px);
+}
+/* « Préparer toute la France » : 4,6 Go et beaucoup de mémoire, pas pour un téléphone */
+body.mobile .nm-france {
+  display: none;
+}

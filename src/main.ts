@@ -29,6 +29,9 @@ import type { Track } from "./types";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const inTauri = "__TAURI_INTERNALS__" in window;
+/** Version téléphone (Android / iPhone) : interface tactile, pas de coach IA (il a besoin d'Ollama sur un PC). */
+const isMobile = /Android|iPhone|iPad/i.test(navigator.userAgent);
+if (isMobile) document.body.classList.add("mobile");
 
 interface Share<T> {
   kind: T;
