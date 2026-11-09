@@ -12,7 +12,7 @@ mod build;
 pub mod elevation;
 pub mod pbf;
 
-pub use build::{build_graph, RawWay};
+pub use build::{build_graph, merge_graphs, RawWay};
 
 use crate::osm_tags::{RoadClass, Surface};
 use serde::{Deserialize, Serialize};
@@ -130,8 +130,23 @@ impl Graph {
         w.flush()
     }
 
+    /// Même contenu que `save`, compressé (gzip) : c'est le format des réseaux
+    /// prêts à l'emploi publiés pour l'appli mobile.
+    pub fn save_gz(&self, path: &Path) -> std::io::Result<()> {
+        let file = BufWriter::new(std::fs::File::create(path)?);
+        let mut w = flate2::write::GzEncoder::new(file, flate2::Compression::best());
+        w.write_all(MAGIC)?;
+        w.write_all(&FORMAT_VERSION.to_le_bytes())?;
+        bincode::serialize_into(&mut w, self).map_err(std::io::Error::other)?;
+        w.finish()?.flush()
+    }
+
     pub fn load(path: &Path) -> std::io::Result<Graph> {
-        let mut r = BufReader::with_capacity(1 << 20, std::fs::File::open(path)?);
+        Graph::read_from(BufReader::with_capacity(1 << 20, std::fs::File::open(path)?))
+    }
+
+    /// Lit un graphe depuis n'importe quelle source (fichier, flux décompressé…).
+    pub fn read_from(mut r: impl Read) -> std::io::Result<Graph> {
         let mut head = [0u8; 12];
         r.read_exact(&mut head)?;
         if &head[..8] != MAGIC {

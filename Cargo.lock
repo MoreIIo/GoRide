@@ -1247,6 +1247,7 @@ version = "0.1.0"
 dependencies = [
  "bincode",
  "fitparser",
+ "flate2",
  "gpx",
  "osmpbf",
  "png 0.17.16",

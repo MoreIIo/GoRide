@@ -202,3 +202,56 @@ fn remove_small_components(g: Graph) -> Graph {
     build_adjacency(&mut out);
     out
 }
+
+/// Assemble plusieurs réseaux voisins (une région et ses voisines) en un seul.
+///
+/// Chaque extrait régional contient en entier les routes qui passent la frontière :
+/// elles figurent donc dans les deux réseaux, avec exactement les mêmes points. Les
+/// sommets de même position sont fusionnés (le réseau devient continu d'une région à
+/// l'autre) et les tronçons identiques ne sont gardés qu'une fois. Une route coupée
+/// différemment de part et d'autre reste en double : sans effet sur le calcul.
+pub fn merge_graphs(parts: Vec<Graph>) -> Graph {
+    if parts.len() == 1 {
+        return parts.into_iter().next().unwrap();
+    }
+    let key = |p: [f32; 2]| ((p[0].to_bits() as u64) << 32) | p[1].to_bits() as u64;
+    let mut out = Graph { has_elevation: parts.iter().all(|g| g.has_elevation), ..Graph::default() };
+    let nodes: usize = parts.iter().map(|g| g.node_count()).sum();
+    let segs: usize = parts.iter().map(|g| g.seg_count()).sum();
+    let mut vertex: std::collections::HashMap<u64, u32> = std::collections::HashMap::with_capacity(nodes);
+    let mut seen: std::collections::HashSet<(u32, u32, u32)> = std::collections::HashSet::with_capacity(segs);
+    out.seg_geom.push(0);
+    for g in &parts {
+        let remap: Vec<u32> = g
+            .node_pos
+            .iter()
+            .map(|&p| {
+                *vertex.entry(key(p)).or_insert_with(|| {
+                    out.node_pos.push(p);
+                    out.node_pos.len() as u32 - 1
+                })
+            })
+            .collect();
+        for s in 0..g.seg_count() {
+            let (a, b) = (remap[g.seg_from[s] as usize], remap[g.seg_to[s] as usize]);
+            if !seen.insert((a, b, g.seg_len[s].to_bits())) {
+                continue; // même tronçon déjà apporté par une région voisine
+            }
+            out.seg_from.push(a);
+            out.seg_to.push(b);
+            out.seg_len.push(g.seg_len[s]);
+            out.seg_class.push(g.seg_class[s]);
+            out.seg_surface.push(g.seg_surface[s]);
+            out.seg_dir.push(g.seg_dir[s]);
+            out.seg_flags.push(g.seg_flags[s]);
+            out.seg_up.push(g.seg_up[s]);
+            out.seg_down.push(g.seg_down[s]);
+            out.seg_grade_fwd.push(g.seg_grade_fwd[s]);
+            out.seg_grade_bwd.push(g.seg_grade_bwd[s]);
+            out.geom.extend_from_slice(g.seg_points(s as u32));
+            out.seg_geom.push(out.geom.len() as u32);
+        }
+    }
+    build_adjacency(&mut out);
+    out
+}

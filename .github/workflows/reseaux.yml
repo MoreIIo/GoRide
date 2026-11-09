@@ -1,0 +1,94 @@
+# Réseaux routiers prêts à l'emploi pour l'appli mobile.
+#
+# Chaque mois, pour chacune des 22 régions : extrait OpenStreetMap (Geofabrik) → réseau vélo
+# → relief → fichier compressé publié dans la version « reseaux-vN » du dépôt (N = format
+# du graphe). Le téléphone télécharge ces fichiers au lieu de tout construire lui-même.
+name: Réseaux routiers
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 2 * *" # le 2 de chaque mois, 3 h 17 (UTC)
+  push:
+    branches: [mobile-android]
+    paths: [".github/workflows/reseaux.yml"]
+
+permissions:
+  contents: write
+
+jobs:
+  region:
+    name: ${{ matrix.region }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        region:
+          - alsace
+          - aquitaine
+          - auvergne
+          - basse-normandie
+          - bourgogne
+          - bretagne
+          - centre
+          - champagne-ardenne
+          - corse
+          - franche-comte
+          - haute-normandie
+          - ile-de-france
+          - languedoc-roussillon
+          - limousin
+          - lorraine
+          - midi-pyrenees
+          - nord-pas-de-calais
+          - pays-de-la-loire
+          - picardie
+          - poitou-charentes
+          - provence-alpes-cote-d-azur
+          - rhone-alpes
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: export-region
+      - name: Outil de fabrication
+        run: cargo build --release -p goride-core --example export_region
+      - name: Extrait OpenStreetMap
+        run: curl -fsSL --retry 5 --retry-delay 20 -o region.osm.pbf "https://download.geofabrik.de/europe/france/${{ matrix.region }}-latest.osm.pbf"
+      - name: Réseau et relief
+        run: target/release/examples/export_region region.osm.pbf "${{ matrix.region }}.graph.gz" dem-cache
+      - uses: actions/upload-artifact@v4
+        with:
+          name: graph-${{ matrix.region }}
+          path: ${{ matrix.region }}.graph.gz
+          compression-level: 0
+          retention-days: 3
+
+  publish:
+    needs: region
+    # Les régions réussies sont publiées même si une autre a échoué (elle garde sa version précédente).
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: graph-*
+          merge-multiple: true
+          path: out
+      - name: Publication
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ls -la out
+          V=$(grep -oP 'pub const FORMAT_VERSION: u32 = \K[0-9]+' crates/goride-core/src/graph/mod.rs)
+          TAG="reseaux-v$V"
+          if ! gh release view "$TAG" > /dev/null 2>&1; then
+            gh release create "$TAG" --target "$GITHUB_SHA" --latest=false \
+              --title "Réseaux routiers (format $V)" \
+              --notes "Réseaux vélo prêts à l'emploi pour l'appli mobile GoRide, un fichier par région, mis à jour chaque mois. Données © contributeurs OpenStreetMap (ODbL), via Geofabrik ; relief : Mapzen Terrain Tiles."
+          fi
+          gh release upload "$TAG" out/*.graph.gz --clobber

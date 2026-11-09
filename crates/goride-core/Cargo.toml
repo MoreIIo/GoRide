@@ -15,6 +15,8 @@ osmpbf = "0.3"
 rayon = "1"
 rstar = "0.12"
 bincode = "1"
+# Réseaux prêts à l'emploi compressés (appli mobile)
+flate2 = "1"
 # Altitude (tuiles Terrarium)
 ureq = "2"
 png = "0.17"
