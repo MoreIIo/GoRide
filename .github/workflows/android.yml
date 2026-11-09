@@ -49,17 +49,19 @@ jobs:
           shared-key: android
           workspaces: ". -> target"
 
-      - uses: nttld/setup-ndk@v1
-        id: ndk
-        with:
-          ndk-version: r27c
-          local-cache: true
+      - name: Kit Android natif (NDK)
+        run: |
+          NDK="${ANDROID_NDK_LATEST_HOME:-}"
+          if [ -z "$NDK" ] || [ ! -x "$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/clang" ]; then
+            yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;27.2.12479018" > /dev/null
+            NDK="$ANDROID_HOME/ndk/27.2.12479018"
+          fi
+          "$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang" --version | head -n 1
+          echo "NDK_HOME=$NDK" >> "$GITHUB_ENV"
 
       - run: npm ci
 
       - name: Projet Android
-        env:
-          NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
         run: npm run tauri android init -- --ci
 
       - name: Icônes et signature
@@ -82,8 +84,6 @@ jobs:
           python3 scripts/android-ci.py "$RUNNER_TEMP/icons" "$RUNNER_TEMP/goride.jks" "$PASS"
 
       - name: Compilation (téléphones 64 bits)
-        env:
-          NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
         run: npm run tauri android build -- --apk --target aarch64
 
       - name: Nom du fichier
