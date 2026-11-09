@@ -1,0 +1,108 @@
+# Appli Android de GoRide : APK signé, prêt à installer sur un téléphone.
+#
+# - appelé par release.yml à chaque version (tag v…) : l'APK rejoint l'installateur Windows
+#   dans la même « Release » GitHub ;
+# - lançable à la main (onglet Actions) pour fabriquer un APK d'essai.
+#
+# Signature : secrets ANDROID_KEYSTORE (fichier .jks en base64) et ANDROID_KEYSTORE_PASSWORD.
+# Sans eux, un APK d'aperçu est signé avec une clé jetable (il ne pourra pas être mis à jour).
+name: Android
+
+on:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      release_id:
+        description: "Release GitHub à compléter avec l'APK"
+        type: string
+        default: ""
+  push:
+    branches: [mobile-android]
+    paths: [".github/workflows/android.yml", "scripts/android-ci.py"]
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: android
+          workspaces: ". -> target"
+
+      - run: npm ci
+
+      - name: Projet Android
+        env:
+          NDK_HOME: ${{ env.ANDROID_NDK_LATEST_HOME }}
+        run: npm run tauri android init -- --ci
+
+      - name: Icônes et signature
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          sudo apt-get install -y -q librsvg2-bin > /dev/null
+          rsvg-convert -w 1024 -h 1024 -b "#14181F" src-tauri/icons/icon-android.svg -o "$RUNNER_TEMP/icon-android.png"
+          npm run tauri icon -- "$RUNNER_TEMP/icon-android.png" -o "$RUNNER_TEMP/icons"
+          if [ -n "$KEYSTORE" ]; then
+            echo "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/goride.jks"
+            PASS="$KEYSTORE_PASSWORD"
+          else
+            echo "::warning::Pas de clé de signature dans les secrets : APK d'aperçu signé avec une clé jetable."
+            PASS="apercu-$(date +%s)"
+            keytool -genkeypair -keystore "$RUNNER_TEMP/goride.jks" -storetype JKS -keyalg RSA -keysize 2048 -validity 365 \
+              -alias goride -storepass "$PASS" -keypass "$PASS" -dname "CN=GoRide apercu" > /dev/null
+          fi
+          python3 scripts/android-ci.py "$RUNNER_TEMP/icons" "$RUNNER_TEMP/goride.jks" "$PASS"
+
+      - name: Compilation (téléphones 64 bits)
+        env:
+          NDK_HOME: ${{ env.ANDROID_NDK_LATEST_HOME }}
+        run: npm run tauri android build -- --apk --target aarch64
+
+      - name: Nom du fichier
+        id: apk
+        run: |
+          V=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          SRC=$(find src-tauri/gen/android/app/build/outputs/apk -name "*release*.apk" | head -n 1)
+          test -n "$SRC" || { echo "Aucun APK produit"; exit 1; }
+          cp "$SRC" "GoRide_${V}_android.apk"
+          echo "file=GoRide_${V}_android.apk" >> "$GITHUB_OUTPUT"
+          ls -la GoRide_*.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.apk.outputs.file }}
+          path: ${{ steps.apk.outputs.file }}
+          compression-level: 0
+
+      - name: Ajout à la release
+        if: ${{ inputs.release_id != '' && inputs.release_id != null }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          curl -fsS -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Content-Type: application/vnd.android.package-archive" \
+            --data-binary @"${{ steps.apk.outputs.file }}" \
+            "https://uploads.github.com/repos/${{ github.repository }}/releases/${{ inputs.release_id }}/assets?name=${{ steps.apk.outputs.file }}" > /dev/null

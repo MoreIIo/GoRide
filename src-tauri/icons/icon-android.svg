@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Variante Android : logo un peu plus petit pour tenir dans le cercle des icônes adaptatives -->
+  <rect width="1024" height="1024" fill="#14181F"/>
+  <g transform="translate(192 206) scale(20)">
+    <path d="M5 23 11.5 12l5 6.5L22 8.5 27 23" fill="none" stroke="#FF6A2B" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="butt"/>
+    <circle cx="22" cy="8.5" r="2.2" fill="#FFFFFF"/>
+  </g>
+</svg>

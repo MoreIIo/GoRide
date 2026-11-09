@@ -2,6 +2,7 @@
 node_modules/
 dist/
 target/
+# Projets Android / iOS générés par Tauri : recréés sur GitHub à chaque compilation (android.yml)
 src-tauri/gen/
 
 # Journaux, fichiers système, éditeurs
@@ -22,3 +23,6 @@ _backup*/
 
 # Executables fabriques par build-exe.bat
 /release/
+
+# Clé de signature Android : secrète, jamais sur GitHub
+/signing/
