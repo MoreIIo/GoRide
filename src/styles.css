@@ -4659,3 +4659,30 @@ body.mobile .stats dt input {
   width: 34px;
   padding: 1px 3px;
 }
+
+/* Boutons réservés au téléphone (position GPS…) */
+body:not(.mobile) .mobile-only {
+  display: none !important;
+}
+/* Pas de dossier ni d'Explorateur sur téléphone : les itinéraires vivent dans l'appli */
+body.mobile .lib-foot,
+body.mobile #imp-folder,
+body.mobile #nm-file {
+  display: none !important;
+}
+#loop-here svg {
+  width: 16px;
+  height: 16px;
+}
+/* Ma position : point bleu à halo */
+.me-dot {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--blue);
+  border: 3px solid #fff;
+  box-shadow: 0 0 0 6px rgba(62, 139, 255, 0.25), 0 1px 4px rgba(0, 0, 0, 0.5);
+}
+body.mobile #import-menu .hint {
+  display: none;
+}

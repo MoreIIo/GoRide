@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { ask, open, save } from "@tauri-apps/plugin-dialog";
+import { appCacheDir, join } from "@tauri-apps/api/path";
 import "@fontsource-variable/inter-tight";
 import maplibregl from "maplibre-gl";
 import "./styles.css";
@@ -64,6 +65,9 @@ if (isMobile) {
       wasHidden = hidden;
     }).observe(el, { attributes: true, attributeFilter: ["class"] });
   }
+  // Textes pensés pour le PC (USB, glisser-déposer) remplacés sur téléphone
+  document.getElementById("rides-empty")!.innerHTML =
+    "Aucune sortie pour l'instant. Importe les fichiers <b>.fit</b> de ton compteur (depuis Garmin Connect : Exporter le fichier d'origine), ou des <b>.gpx</b> / <b>.tcx</b>.";
   // Des boucles viennent d'être proposées : on déplie pour les montrer.
   new MutationObserver(() => {
     if (document.getElementById("loop-list")!.children.length > 0) setSheet("loop-panel", true);
@@ -133,7 +137,8 @@ async function loadFromPath(path: string) {
     console.info(`GPX chargé en ${(performance.now() - t0).toFixed(0)} ms (${track.stats.pointCount} points)`);
     setDrawing(false);
     await planner.clear();
-    const fileName = path.split(/[\\/]/).pop()!.replace(/\.gpx$/i, "");
+    // Sur téléphone, le fichier arrive sous une adresse content:// sans nom lisible
+    const fileName = /^content:/.test(path) ? "Trace importée" : path.split(/[\\/]/).pop()!.replace(/\.gpx$/i, "");
     current = { kind: "import", track, name: track.name ?? fileName };
     currentFile = null;
     savedSig = null;
@@ -150,7 +155,7 @@ async function loadFromPath(path: string) {
 async function pickFile() {
   if (!inTauri) return toast("L'import fonctionne dans l'application (npm run tauri dev), pas dans un navigateur.");
   try {
-    const path = await open({ multiple: false, directory: false, filters: [{ name: "Trace GPX", extensions: ["gpx", "GPX"] }] });
+    const path = await open({ multiple: false, directory: false, filters: isMobile ? undefined : [{ name: "Trace GPX", extensions: ["gpx", "GPX"] }] });
     if (typeof path === "string") await loadFromPath(path);
   } catch (err) {
     toast(`Ouverture du sélecteur impossible : ${err}`);
@@ -808,7 +813,8 @@ async function pickRides() {
     multiple: true,
     directory: false,
     title: "Sorties à importer",
-    filters: [{ name: "Sorties (FIT, GPX, TCX)", extensions: ["fit", "FIT", "gpx", "GPX", "tcx", "TCX", "gz"] }],
+    // Android ne connaît pas le type des .fit : un filtre les cacherait. Le format est reconnu à l'import.
+    filters: isMobile ? undefined : [{ name: "Sorties (FIT, GPX, TCX)", extensions: ["fit", "FIT", "gpx", "GPX", "tcx", "TCX", "gz"] }],
   });
   const paths = Array.isArray(sel) ? sel : sel ? [sel] : [];
   await importRides(paths);
@@ -1449,6 +1455,7 @@ function updateTime() {
 async function exportRoute(format: "gpx" | "fit") {
   if (!current) return;
   const safe = current.name.replace(/[\\/:*?"<>|]/g, "-");
+  if (isMobile) return shareRoute(format, safe);
   const filter =
     format === "fit"
       ? { name: "Parcours Garmin (FIT)", extensions: ["fit"] }
@@ -1474,6 +1481,78 @@ async function exportRoute(format: "gpx" | "fit") {
     toast(`Export impossible : ${err}`);
   }
 }
+
+/**
+ * Téléphone : le fichier est écrit dans le cache puis proposé à la feuille de partage
+ * (Garmin Connect, Drive, e-mail, Fichiers…).
+ */
+async function shareRoute(format: "gpx" | "fit", safe: string) {
+  if (!current) return;
+  try {
+    const path = await join(await appCacheDir(), `${safe}.${format}`);
+    await invoke("save_route", {
+      path,
+      name: current.name,
+      coords: current.track.coords,
+      ele: current.track.ele,
+      speedKmh: speed(),
+    });
+    await invoke("plugin:sharekit|share_file", {
+      url: path,
+      mimeType: format === "fit" ? "application/octet-stream" : "application/gpx+xml",
+      title: format === "fit" ? "Envoyer le parcours vers le compteur" : "Partager l'itinéraire",
+    });
+  } catch (err) {
+    if (!/cancel/i.test(String(err))) toast(`Partage impossible : ${err}`);
+  }
+}
+
+// --- Position GPS (téléphone) ---------------------------------------------------------
+
+let meMarker: maplibregl.Marker | null = null;
+
+/** Position actuelle (lon, lat), après avoir demandé l'autorisation si besoin. */
+async function myPosition(): Promise<[number, number] | null> {
+  type Perm = { location: string };
+  try {
+    let perm = await invoke<Perm>("plugin:geolocation|check_permissions");
+    if (perm.location !== "granted") perm = await invoke<Perm>("plugin:geolocation|request_permissions", { permissions: ["location"] });
+    if (perm.location !== "granted") {
+      toast("GoRide n'a pas accès à ta position : autorise-la dans les réglages Android de l'appli.");
+      return null;
+    }
+    toast("Recherche de ta position…", "ok", 0);
+    const pos = await invoke<{ coords: { longitude: number; latitude: number } }>("plugin:geolocation|get_current_position", {
+      options: { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 },
+    });
+    $("toast").classList.add("hidden");
+    const p: [number, number] = [pos.coords.longitude, pos.coords.latitude];
+    if (!meMarker) {
+      const el = document.createElement("div");
+      el.className = "me-dot";
+      meMarker = new maplibregl.Marker({ element: el });
+    }
+    meMarker.setLngLat(p).addTo(trackMap.map);
+    return p;
+  } catch (err) {
+    toast(`Position indisponible : ${err}`);
+    return null;
+  }
+}
+
+async function locateMe() {
+  const p = await myPosition();
+  if (!p) return;
+  trackMap.map.flyTo({ center: p, zoom: Math.max(trackMap.map.getZoom(), 14), duration: 1200 });
+  if (loopMode) setLoopStart(p);
+}
+$("btn-locate").addEventListener("click", locateMe);
+$("loop-here").addEventListener("click", async () => {
+  const p = await myPosition();
+  if (!p) return;
+  setLoopStart(p);
+  trackMap.map.flyTo({ center: p, zoom: Math.max(trackMap.map.getZoom(), 11), duration: 1200 });
+});
 
 // --- Mes itinéraires : enregistrés dans un dossier choisi une fois -----------------
 
@@ -2474,7 +2553,7 @@ function toast(msg: string, kind: "error" | "ok" = "error", ms = kind === "ok" ?
 window.addEventListener("error", (e) => toast(`Erreur : ${e.message}`));
 window.addEventListener("unhandledrejection", (e) => toast(`Erreur : ${e.reason}`));
 
-if (inTauri) {
+if (inTauri && !isMobile) {
   // Glisser-déposer : Tauri intercepte le fichier et nous donne directement son chemin.
   const drop = $("drop");
   getCurrentWebview()

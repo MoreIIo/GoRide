@@ -218,7 +218,13 @@ fn write_settings(st: &AppState, s: &serde_json::Map<String, serde_json::Value>)
 
 /// Dossier des itinéraires, s'il a déjà été choisi.
 fn routes_dir(st: &AppState) -> Option<PathBuf> {
-    read_settings(st).get("routesDir").and_then(|v| v.as_str()).filter(|s| !s.is_empty()).map(PathBuf::from)
+    read_settings(st)
+        .get("routesDir")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(PathBuf::from)
+        // Téléphone : pas de dossier à choisir, les itinéraires vivent dans les données de l'appli
+        .or_else(|| cfg!(mobile).then(|| st.settings_path.with_file_name("itineraires")))
 }
 
 fn routes_dir_or_err(st: &AppState) -> Result<PathBuf, String> {
@@ -229,7 +235,20 @@ fn routes_dir_or_err(st: &AppState) -> Result<PathBuf, String> {
 
 /// Lit un fichier GPX sur le disque et renvoie la trace calculée.
 #[tauri::command]
-async fn load_track(path: String) -> Result<Track, String> {
+async fn load_track(app: AppHandle, path: String) -> Result<Track, String> {
+    // Téléphone : fichier choisi dans l'appli Fichiers (adresse content://, sans extension)
+    #[cfg(mobile)]
+    if !Path::new(&path).is_file() {
+        use std::str::FromStr;
+        use tauri_plugin_fs::{FilePath, FsExt};
+        let fp = FilePath::from_str(&path).unwrap_or_else(|e| match e {});
+        let bytes = app.fs().read(fp).map_err(|e| format!("Impossible de lire le fichier : {e}"))?;
+        if sniff_activity(&bytes) != Some("gpx") {
+            return Err("Ce fichier n'est pas une trace GPX.".into());
+        }
+        return goride_core::parse_gpx(&bytes).map_err(|e| e.to_string());
+    }
+    let _ = &app;
     let path = PathBuf::from(path);
     let ext = path.extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase).unwrap_or_default();
     if ext != "gpx" {
@@ -342,6 +361,8 @@ fn with_library<T>(st: &AppState, f: impl FnOnce(&mut Library) -> Result<T, Stri
 #[tauri::command]
 async fn import_activities(app: AppHandle, paths: Vec<String>, folder: Option<String>) -> Result<ImportReport, String> {
     tauri::async_runtime::spawn_blocking(move || {
+        #[cfg(mobile)]
+        let paths = stage_picked_files(&app, paths)?;
         let st = app.state::<AppState>();
         let progress = |done: usize, total: usize| {
             if total > 3 && (done % 5 == 0 || done == total) {
@@ -355,6 +376,64 @@ async fn import_activities(app: AppHandle, paths: Vec<String>, folder: Option<St
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+/// Format d'un fichier de sortie d'après son contenu (sur téléphone, un fichier choisi
+/// n'arrive qu'avec une adresse content://, sans nom ni extension).
+#[cfg(any(mobile, test))]
+fn sniff_activity(bytes: &[u8]) -> Option<&'static str> {
+    if bytes.len() > 12 && &bytes[8..12] == b".FIT" {
+        return Some("fit");
+    }
+    if bytes.starts_with(&[0x1f, 0x8b]) {
+        return Some("gz");
+    }
+    let head = String::from_utf8_lossy(&bytes[..bytes.len().min(4096)]);
+    if head.contains("<gpx") {
+        Some("gpx")
+    } else if head.contains("TrainingCenterDatabase") {
+        Some("tcx")
+    } else {
+        None
+    }
+}
+
+/// Téléphone : les fichiers choisis dans l'appli Fichiers sont copiés dans le cache de
+/// GoRide, avec la bonne extension, avant l'import habituel.
+#[cfg(mobile)]
+fn stage_picked_files(app: &AppHandle, paths: Vec<String>) -> Result<Vec<String>, String> {
+    use std::io::Read;
+    use std::str::FromStr;
+    use tauri_plugin_fs::{FilePath, FsExt};
+    let dir = app.path().app_cache_dir().map_err(|e| e.to_string())?.join("import");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let mut out = Vec::with_capacity(paths.len());
+    for (k, p) in paths.into_iter().enumerate() {
+        if Path::new(&p).is_file() {
+            out.push(p);
+            continue;
+        }
+        let fp = FilePath::from_str(&p).unwrap_or_else(|e| match e {});
+        let mut bytes = app.fs().read(fp).map_err(|e| format!("Lecture du fichier impossible : {e}"))?;
+        let mut kind = sniff_activity(&bytes);
+        if kind == Some("gz") {
+            let mut raw = Vec::new();
+            flate2::read::GzDecoder::new(&bytes[..])
+                .take(200 << 20)
+                .read_to_end(&mut raw)
+                .map_err(|e| format!("Décompression impossible : {e}"))?;
+            bytes = raw;
+            kind = sniff_activity(&bytes).filter(|k| *k != "gz");
+        }
+        let Some(ext) = kind else {
+            return Err("Fichier non reconnu : choisis des sorties au format .fit, .gpx ou .tcx.".into());
+        };
+        let file = dir.join(format!("sortie-{}.{ext}", k + 1));
+        std::fs::write(&file, bytes).map_err(|e| e.to_string())?;
+        out.push(file.to_string_lossy().into_owned());
+    }
+    Ok(out)
 }
 
 /// Progression : forme, fatigue, semaines, vitesse sur le plat.
@@ -1257,12 +1336,29 @@ mod tests {
         assert_eq!(super::network_display("ile-de-france-latest"), "Ile-de-france");
         assert_eq!(super::network_display("mon_extrait"), "Mon-extrait");
     }
+
+    #[test]
+    fn activity_files_recognized_by_content() {
+        let mut fit = vec![14u8, 0x10, 0, 0, 0, 0, 0, 0];
+        fit.extend_from_slice(b".FIT\0\0");
+        assert_eq!(super::sniff_activity(&fit), Some("fit"));
+        assert_eq!(super::sniff_activity(b"<?xml version=\"1.0\"?><gpx version=\"1.1\">"), Some("gpx"));
+        assert_eq!(super::sniff_activity(b"<?xml?><TrainingCenterDatabase>"), Some("tcx"));
+        assert_eq!(super::sniff_activity(&[0x1f, 0x8b, 8, 0]), Some("gz"));
+        assert_eq!(super::sniff_activity(b"bonjour"), None);
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
-        .plugin(tauri_plugin_dialog::init())
+    let builder = tauri::Builder::default().plugin(tauri_plugin_dialog::init());
+    // Téléphone : fichiers de l'appli Fichiers, partage, position GPS
+    #[cfg(mobile)]
+    let builder = builder
+        .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_sharekit::init())
+        .plugin(tauri_plugin_geolocation::init());
+    builder
         .setup(|app| {
             let data = app.path().app_data_dir()?;
             let cache = app.path().app_cache_dir()?;
