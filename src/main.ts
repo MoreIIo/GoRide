@@ -1877,11 +1877,18 @@ async function ensureCoverage(points: [number, number][], keep: [number, number]
     const toGet = c.regions.filter((r) => !r.downloaded);
     const mb = toGet.reduce((a, r) => a + r.sizeMb, 0);
     const lines = [`Pour tracer ici, GoRide doit charger le réseau routier : ${c.name}.`];
-    if (toGet.length)
-      lines.push(
-        `Téléchargement depuis OpenStreetMap (Geofabrik) : ${toGet.map((r) => r.name).join(", ")}, environ ${mb.toLocaleString("fr-FR")} Mo, une seule fois.`,
-      );
-    lines.push("Préparation : quelques minutes. Ensuite ce réseau est gardé et se recharge en quelques secondes.");
+    if (isMobile) {
+      // Téléphone : réseau tout prêt, publié avec GoRide (rien à construire sur l'appareil)
+      if (toGet.length)
+        lines.push(`Téléchargement : ${toGet.map((r) => r.name).join(", ")}, environ ${mb.toLocaleString("fr-FR")} Mo, une seule fois.`);
+      lines.push("Ensuite ce réseau est gardé sur le téléphone et se recharge en quelques secondes.");
+    } else {
+      if (toGet.length)
+        lines.push(
+          `Téléchargement depuis OpenStreetMap (Geofabrik) : ${toGet.map((r) => r.name).join(", ")}, environ ${mb.toLocaleString("fr-FR")} Mo, une seule fois.`,
+        );
+      lines.push("Préparation : quelques minutes. Ensuite ce réseau est gardé et se recharge en quelques secondes.");
+    }
     const ok = await ask(lines.join("\n\n"), {
       title: "Nouvelle région",
       kind: "info",
