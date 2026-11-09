@@ -1,5 +1,6 @@
 import { indexAtDistance, slopeAt, type Track } from "./types";
 import { km, meters, percent } from "./format";
+import { THEME_EVENT } from "./theme";
 
 const PAD = { left: 52, right: 18, top: 24, bottom: 26 };
 /** Pente au-delà de laquelle la zone est surlignée (%). */
@@ -41,6 +42,7 @@ export class ElevationProfile {
     this.ctx = canvas.getContext("2d")!;
     new ResizeObserver(() => this.redraw()).observe(canvas);
     window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => this.redraw());
+    window.addEventListener(THEME_EVENT, () => this.redraw());
 
     canvas.addEventListener("pointermove", (e) => {
       if (!this.track) return;
@@ -225,7 +227,7 @@ export class ElevationProfile {
       ctx.textBaseline = "middle";
       this.marks.forEach((d, k) => {
         const x = Math.round(this.x(Math.min(d, t.stats.distanceM))) + 0.5;
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.35)";
+        ctx.strokeStyle = ink;
         ctx.setLineDash([2, 3]);
         ctx.beginPath();
         ctx.moveTo(x, PAD.top);

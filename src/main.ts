@@ -6,6 +6,7 @@ import "@fontsource-variable/inter-tight";
 import maplibregl from "maplibre-gl";
 import "./styles.css";
 import type { BasemapId } from "./basemaps";
+import { getTheme, setTheme, THEME_EVENT, type Theme } from "./theme";
 import { duration, km, meters } from "./format";
 import { Coach, TERRAIN_LABEL, fmtDuration, type ToolResult, type Workout, type WorkoutInfo } from "./coach";
 import { runIntro } from "./intro";
@@ -2041,6 +2042,9 @@ window.addEventListener("keydown", (e) => {
     else openLoop();
   } else if (!mod && (k === "2" || k === "3") && !typing) {
     trackMap.set3d(k === "3");
+  } else if (k === "escape" && optionsOpen) {
+    setOptionsMenu(false);
+    $("opt-btn").focus();
   } else if (k === "escape" && netMenuOpen) {
     setNetMenu(false);
   } else if (k === "escape" && !$("settings").classList.contains("hidden")) {
@@ -2060,6 +2064,34 @@ document.querySelectorAll<HTMLButtonElement>("[data-basemap]").forEach((btn) =>
     trackMap.setBasemap(btn.dataset.basemap as BasemapId);
   }),
 );
+// Menu Options : interrupteur mode sombre / mode clair
+let optionsOpen = false;
+function setOptionsMenu(open: boolean) {
+  optionsOpen = open;
+  $("options-menu").classList.toggle("hidden", !open);
+  $("opt-btn").setAttribute("aria-expanded", String(open));
+  if (open && netMenuOpen) setNetMenu(false);
+}
+function showTheme(theme: Theme) {
+  const dark = theme === "dark";
+  $("theme-switch").setAttribute("aria-checked", String(dark));
+  $("theme-desc").textContent = dark ? "Interface et carte sombres" : "Interface et carte claires";
+}
+showTheme(getTheme());
+$("opt-btn").addEventListener("click", (e) => {
+  e.stopPropagation();
+  setOptionsMenu(!optionsOpen);
+});
+$("options-menu").addEventListener("click", (e) => e.stopPropagation());
+document.addEventListener("click", () => optionsOpen && setOptionsMenu(false));
+$("net").addEventListener("click", () => optionsOpen && setOptionsMenu(false));
+$("theme-switch").addEventListener("click", () => setTheme(getTheme() === "dark" ? "light" : "dark"));
+window.addEventListener(THEME_EVENT, (e) => {
+  const theme = (e as CustomEvent<Theme>).detail;
+  showTheme(theme);
+  trackMap.setTheme(theme);
+});
+
 // Dock de vue : 2D / 3D, zoom, boussole, relief
 $("tg-hillshade").addEventListener("click", () => {
   const btn = $("tg-hillshade");

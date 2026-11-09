@@ -1,9 +1,12 @@
 import type { LayerSpecification, StyleSpecification } from "maplibre-gl";
+import type { Theme } from "./theme";
 
 export type BasemapId = "route" | "topo" | "satellite";
 
 /** Fond commun à tous les styles : presque noir, comme l'interface. */
 export const MAP_BG = "#0b0b0d";
+/** Fond du thème clair : blanc cassé, comme l'interface. */
+export const MAP_BG_LIGHT = "#f2f1ee";
 
 /** Style raster minimal (une seule couche de tuiles), réglé pour le thème sombre. */
 function rasterStyle(
@@ -12,6 +15,7 @@ function rasterStyle(
   maxzoom: number,
   paint: Record<string, number>,
   tileSize = 256,
+  bg = MAP_BG,
 ): StyleSpecification {
   return {
     version: 8,
@@ -19,7 +23,7 @@ function rasterStyle(
     glyphs: "https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf",
     sources: { base: { type: "raster", tiles, tileSize, maxzoom, attribution } },
     layers: [
-      { id: "background", type: "background", paint: { "background-color": MAP_BG } },
+      { id: "background", type: "background", paint: { "background-color": bg } },
       { id: "base", type: "raster", source: "base", paint },
     ],
   };
@@ -53,31 +57,47 @@ const RASTERS: Record<Exclude<BasemapId, "route">, StyleSpecification> = {
   }),
 };
 
-let darkVector: Promise<StyleSpecification | string> | null = null;
+/** Versions claires : couleurs d'origine, juste un peu adoucies pour laisser ressortir la trace. */
+const RASTERS_LIGHT: Record<Exclude<BasemapId, "route">, StyleSpecification> = {
+  topo: rasterStyle(
+    ["a", "b", "c"].map((s) => `https://${s}.tile.opentopomap.org/{z}/{x}/{y}.png`),
+    '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, SRTM · style © <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA)',
+    17,
+    { "raster-saturation": -0.15, "raster-contrast": -0.04 },
+    256,
+    MAP_BG_LIGHT,
+  ),
+  satellite: rasterStyle([IGN_ORTHO], '© <a href="https://www.ign.fr">IGN</a> — Géoplateforme', 19, { "raster-saturation": -0.05 }, 256, MAP_BG_LIGHT),
+};
+
+/** Style vectoriel « Liberty » téléchargé une seule fois, puis décliné en sombre et en clair. */
+let liberty: Promise<StyleSpecification> | null = null;
+const vectorCache: Partial<Record<Theme, Promise<StyleSpecification | string>>> = {};
 
 /** Style prêt à passer à `map.setStyle`. Le fond vectoriel est téléchargé une fois puis gardé. */
-export function loadBasemap(id: BasemapId): Promise<StyleSpecification | string> {
-  if (id !== "route") return Promise.resolve(RASTERS[id]);
-  darkVector ??= fetch(LIBERTY_URL)
-    .then((r) => {
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      return r.json() as Promise<StyleSpecification>;
-    })
-    .then(darkify)
-    .catch((err) => {
-      console.warn("Fond sombre indisponible, style d'origine utilisé :", err);
-      darkVector = null;
-      return LIBERTY_URL;
-    });
-  return darkVector;
+export function loadBasemap(id: BasemapId, theme: Theme = "dark"): Promise<StyleSpecification | string> {
+  if (id !== "route") return Promise.resolve((theme === "light" ? RASTERS_LIGHT : RASTERS)[id]);
+  liberty ??= fetch(LIBERTY_URL).then((r) => {
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return r.json() as Promise<StyleSpecification>;
+  });
+  vectorCache[theme] ??= liberty.then(theme === "light" ? lighten : darkify).catch((err) => {
+    console.warn("Fond vectoriel indisponible, style d'origine utilisé :", err);
+    liberty = null;
+    delete vectorCache[theme];
+    return LIBERTY_URL;
+  });
+  return vectorCache[theme]!;
 }
 
 /** Style vide affiché le temps que le vrai fond arrive. */
-export const PLACEHOLDER_STYLE: StyleSpecification = {
-  version: 8,
-  sources: {},
-  layers: [{ id: "background", type: "background", paint: { "background-color": MAP_BG } }],
-};
+export function placeholderStyle(theme: Theme = "dark"): StyleSpecification {
+  return {
+    version: 8,
+    sources: {},
+    layers: [{ id: "background", type: "background", paint: { "background-color": theme === "light" ? MAP_BG_LIGHT : MAP_BG } }],
+  };
+}
 
 /** Modèle numérique de terrain mondial (format Terrarium) pour l'ombrage et la 3D. */
 export const DEM_TILES = ["https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png"];
@@ -183,6 +203,35 @@ const has = (id: string, ...keys: string[]) => keys.some((k) => id.includes(k));
 function recolor(paint: Record<string, unknown> | undefined, keys: string[], f: (c: Hsla) => Hsla) {
   if (!paint) return;
   for (const k of keys) if (k in paint) paint[k] = mapColors(paint[k], f);
+}
+
+/** Version claire de « Liberty » : couleurs d'origine un peu désaturées, points d'intérêt masqués. */
+function lighten(style: StyleSpecification): StyleSpecification {
+  const soft = ([h, s, l, a]: Hsla): Hsla => [h, clamp(s * 0.7), l, a];
+  const layers = style.layers.map((src) => {
+    const layer = structuredClone(src) as LayerSpecification & {
+      paint?: Record<string, unknown>;
+      layout?: Record<string, unknown>;
+    };
+    const id = layer.id.toLowerCase();
+    const p = layer.paint;
+    switch (layer.type) {
+      case "background":
+        layer.paint = { ...p, "background-color": MAP_BG_LIGHT };
+        break;
+      case "fill":
+        recolor(p, ["fill-color", "fill-outline-color"], soft);
+        break;
+      case "line":
+        recolor(p, ["line-color"], soft);
+        break;
+      case "symbol":
+        if (id.startsWith("poi")) layer.layout = { ...layer.layout, visibility: "none" };
+        break;
+    }
+    return layer;
+  });
+  return { ...style, layers };
 }
 
 /** Transforme le style clair « Liberty » en version sombre, couche par couche. */

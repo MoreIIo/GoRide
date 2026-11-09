@@ -24,6 +24,8 @@
   --red: #e5484d;
   --amber: #f0a020;
   --blue: #3e8bff;
+  --tint: 255 255 255; /* teinte des voiles légers (blanc en sombre, noir en clair) */
+  --well: rgba(0, 0, 0, 0.25); /* creux : champs, rails, zones encastrées */
 
   /* Matières */
   --shadow: 0 24px 60px -12px rgba(0, 0, 0, 0.65), 0 2px 8px rgba(0, 0, 0, 0.35);
@@ -90,7 +92,7 @@ body {
 /* Barres de défilement discrètes */
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
+  scrollbar-color: rgb(var(--tint) / 0.14) transparent;
 }
 
 /* Verre dépoli commun aux panneaux flottants */
@@ -185,7 +187,7 @@ h2 {
   padding: 0 15px;
   border: 1px solid var(--line-2);
   border-radius: 0;
-  background: rgba(255, 255, 255, 0.03);
+  background: rgb(var(--tint) / 0.03);
   color: var(--text);
   font: inherit;
   font-weight: 500;
@@ -201,7 +203,7 @@ h2 {
 }
 .btn:hover {
   background: var(--surface-3);
-  border-color: rgba(255, 255, 255, 0.22);
+  border-color: rgb(var(--tint) / 0.22);
 }
 .btn:active {
   transform: scale(0.97);
@@ -250,7 +252,7 @@ h2 {
 .btn.active {
   background: var(--text);
   border-color: var(--text);
-  color: #0a0a0b;
+  color: var(--bg);
 }
 .btn:disabled {
   opacity: 0.4;
@@ -314,7 +316,7 @@ h2 {
   grid-auto-columns: 1fr;
   padding: 3px;
   border-radius: 0;
-  background: rgba(255, 255, 255, 0.045);
+  background: rgb(var(--tint) / 0.045);
   border: 1px solid var(--line);
   isolation: isolate;
 }
@@ -327,7 +329,7 @@ h2 {
   left: 3px;
   width: calc((100% - 6px) / var(--n));
   border-radius: 0;
-  background: rgba(255, 255, 255, 0.12);
+  background: rgb(var(--tint) / 0.12);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 2px 10px rgba(0, 0, 0, 0.35);
   transform: translateX(calc(var(--i) * 100%));
   transition: transform 0.5s var(--ease), width 0.5s var(--ease), opacity 0.3s;
@@ -369,7 +371,7 @@ h2 {
   font-size: 12px;
 }
 .mode-switch {
-  background: rgba(0, 0, 0, 0.25);
+  background: var(--well);
 }
 .mode-switch::before {
   background: var(--accent);
@@ -517,7 +519,7 @@ h2 {
   width: 38px;
   padding: 2px;
   border-radius: 0;
-  background: rgba(0, 0, 0, 0.3);
+  background: var(--well);
   isolation: isolate;
 }
 .view-switch .thumb {
@@ -649,7 +651,7 @@ h2 {
   padding: 1px 5px;
   border: 1px solid var(--line-2);
   border-radius: 0;
-  background: rgba(0, 0, 0, 0.3);
+  background: var(--well);
   color: var(--text);
   font: inherit;
   font-size: 11px;
@@ -971,8 +973,8 @@ h2 {
 }
 .maplibregl-ctrl-scale {
   background: transparent !important;
-  border-color: rgba(255, 255, 255, 0.5) !important;
-  color: rgba(255, 255, 255, 0.7) !important;
+  border-color: rgb(var(--tint) / 0.5) !important;
+  color: rgb(var(--tint) / 0.7) !important;
   font: 500 10px var(--font) !important;
   letter-spacing: 0.06em;
 }
@@ -1085,7 +1087,7 @@ input[type="range"] {
 input[type="range"]::-webkit-slider-runnable-track {
   height: 3px;
   border-radius: 0;
-  background: linear-gradient(90deg, var(--accent), var(--accent)) no-repeat, rgba(255, 255, 255, 0.12);
+  background: linear-gradient(90deg, var(--accent), var(--accent)) no-repeat, rgb(var(--tint) / 0.12);
   background-size: 100% 100%;
 }
 input[type="range"]::-webkit-slider-thumb {
@@ -1120,7 +1122,7 @@ select,
   padding: 0 10px;
   border: 1px solid var(--line-2);
   border-radius: 0;
-  background: rgba(0, 0, 0, 0.3);
+  background: var(--well);
   color: var(--text);
   font: inherit;
   font-size: 13px;
@@ -1136,7 +1138,7 @@ select {
   cursor: pointer;
 }
 select option {
-  background: #17171a;
+  background: var(--surface);
   color: var(--text);
 }
 select:hover,
@@ -1803,7 +1805,7 @@ table.best td b {
 .intro-line {
   width: 180px;
   height: 1px;
-  background: rgba(255, 255, 255, 0.1);
+  background: rgb(var(--tint) / 0.1);
   overflow: hidden;
 }
 .intro-line i {
@@ -1944,7 +1946,7 @@ body.revealing .vignette { transition-delay: 0.4s; }
   color: var(--text);
 }
 .menu-btn.active {
-  background: rgba(255, 255, 255, 0.14);
+  background: rgb(var(--tint) / 0.14);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
   color: var(--text);
 }
@@ -2240,7 +2242,7 @@ body.menu-closed #coach-panel {
   transition: transform 0.35s var(--ease);
 }
 #btn-settings.open {
-  background: rgba(255, 255, 255, 0.14);
+  background: rgb(var(--tint) / 0.14);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
 #btn-settings.open .chev {
@@ -2461,7 +2463,7 @@ body.menu-closed #coach-panel {
   width: 0;
   min-height: 10px;
   margin: 3px 0 0;
-  border-left: 2px dotted rgba(255, 255, 255, 0.35);
+  border-left: 2px dotted rgb(var(--tint) / 0.35);
 }
 .pt-text {
   flex: 1;
@@ -2625,7 +2627,7 @@ h2.editable:hover {
 }
 h2.editable[contenteditable="true"] {
   border-bottom-color: var(--accent);
-  background: rgba(0, 0, 0, 0.25);
+  background: var(--well);
 }
 
 .library-panel {
@@ -2660,7 +2662,7 @@ h2.editable[contenteditable="true"] {
   padding: 0 10px;
   height: 34px;
   border: 1px solid var(--line);
-  background: rgba(0, 0, 0, 0.2);
+  background: var(--well);
   color: var(--text-2);
 }
 .lib-filter:focus-within {
@@ -2997,7 +2999,7 @@ body.menu-closed #library-panel {
   min-width: 0;
   padding: 9px 10px;
   border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.03);
+  background: rgb(var(--tint) / 0.03);
   color: var(--text);
   font: inherit;
   font-size: 13px;
@@ -3204,7 +3206,7 @@ body:has(#library-panel:not(.hidden)) .tooldock {
   height: 26px;
   padding: 0 10px;
   border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.03);
+  background: rgb(var(--tint) / 0.03);
   color: var(--text-2);
   font: inherit;
   font-size: 11.5px;
@@ -3310,7 +3312,7 @@ body:has(#library-panel:not(.hidden)) .tooldock {
 }
 .cs-bar {
   height: 4px;
-  background: rgba(255, 255, 255, 0.08);
+  background: rgb(var(--tint) / 0.08);
   overflow: hidden;
 }
 .cs-bar i {
@@ -3411,7 +3413,7 @@ body:not(.coach-ready) .wk-form {
 .msg b,
 .coach-text b {
   font-weight: 600;
-  color: #fff;
+  color: var(--text);
 }
 .msg.streaming > :last-child::after,
 .coach-text.streaming > :last-child::after {
@@ -3488,7 +3490,7 @@ body:not(.coach-ready) .wk-form {
 .coach-idea {
   padding: 10px 12px;
   border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.025);
+  background: rgb(var(--tint) / 0.025);
   color: var(--text);
   font: inherit;
   font-size: 13px;
@@ -3509,7 +3511,7 @@ body:not(.coach-ready) .wk-form {
   gap: 6px;
   padding: 6px 6px 6px 12px;
   border: 1px solid var(--line-2);
-  background: rgba(0, 0, 0, 0.25);
+  background: var(--well);
   transition: border-color 0.2s var(--ease);
 }
 .coach-compose:focus-within {
@@ -3620,7 +3622,7 @@ body:not(.coach-ready) .wk-form {
   height: 30px;
   padding: 0 10px;
   border: 1px solid var(--line-2);
-  background: rgba(0, 0, 0, 0.25);
+  background: var(--well);
   color: var(--text);
   font: inherit;
   font-size: 13px;
@@ -3649,7 +3651,7 @@ body:not(.coach-ready) .wk-form {
   gap: 6px 10px;
   padding: 10px 12px 9px;
   border: 1px solid transparent;
-  background: rgba(255, 255, 255, 0.025);
+  background: rgb(var(--tint) / 0.025);
   cursor: pointer;
   transition: background 0.2s var(--ease), border-color 0.2s var(--ease);
 }
@@ -3691,7 +3693,7 @@ body:not(.coach-ready) .wk-form {
   height: 28px;
 }
 .wk-ftp {
-  stroke: rgba(255, 255, 255, 0.45);
+  stroke: rgb(var(--tint) / 0.45);
   stroke-width: 1;
   stroke-dasharray: 6 5;
   vector-effect: non-scaling-stroke;
@@ -3717,7 +3719,7 @@ body:not(.coach-ready) .wk-form {
   position: relative;
   margin: 18px 0 14px;
   padding: 10px 10px 0;
-  background: rgba(0, 0, 0, 0.22);
+  background: var(--well);
   border: 1px solid var(--line);
 }
 .wk-ftp-label {
@@ -4113,4 +4115,205 @@ body.mode-rides .coach-float {
     transition-duration: 0.01ms !important;
     transition-delay: 0s !important;
   }
+}
+
+/* ==========================================================================
+   Thème clair (Options → Mode sombre désactivé)
+   Les composants lisent les mêmes variables : seules les valeurs changent ici.
+   ========================================================================== */
+
+:root[data-theme="light"] {
+  --bg: #f3f3f1;
+  --glass: rgba(255, 255, 255, 0.74);
+  --glass-strong: rgba(255, 255, 255, 0.93);
+  --surface: #ffffff;
+  --surface-2: rgba(0, 0, 0, 0.045);
+  --surface-3: rgba(0, 0, 0, 0.09);
+  --text: #141417;
+  --text-2: #62626b;
+  --text-3: #9b9ba4;
+  --line: rgba(0, 0, 0, 0.08);
+  --line-2: rgba(0, 0, 0, 0.16);
+  --grid: rgba(0, 0, 0, 0.08);
+  --accent-soft: rgba(252, 76, 2, 0.11);
+  --tint: 0 0 0;
+  --well: rgba(0, 0, 0, 0.045);
+  --shadow: 0 22px 50px -16px rgba(20, 20, 30, 0.22), 0 2px 8px rgba(20, 20, 30, 0.07);
+  --edge: inset 0 1px 0 rgba(255, 255, 255, 0.85);
+  color-scheme: light;
+}
+
+:root[data-theme="light"] #map {
+  background: radial-gradient(ellipse at 50% 55%, #fbfbf9 0%, #e7e6e2 70%);
+}
+:root[data-theme="light"] .vignette {
+  background: radial-gradient(ellipse at center, transparent 60%, rgba(40, 40, 50, 0.1) 100%);
+}
+:root[data-theme="light"] #intro {
+  background: radial-gradient(ellipse at 50% 60%, #ffffff 0%, #ecebe7 70%);
+}
+:root[data-theme="light"] ::selection {
+  color: #fff;
+}
+/* Onglet actif des sélecteurs : pastille blanche légère plutôt qu'un voile gris */
+:root[data-theme="light"] .segmented::before {
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(20, 20, 30, 0.14), 0 0 0 1px rgba(0, 0, 0, 0.05);
+}
+
+/* Pendant la bascule de thème, tout glisse en douceur vers les nouvelles couleurs */
+:root.theme-switching *,
+:root.theme-switching *::before,
+:root.theme-switching *::after {
+  transition:
+    background-color 0.4s var(--ease),
+    border-color 0.4s var(--ease),
+    color 0.4s var(--ease),
+    fill 0.4s var(--ease),
+    stroke 0.4s var(--ease),
+    box-shadow 0.4s var(--ease) !important;
+}
+
+/* ==========================================================================
+   Menu Options
+   ========================================================================== */
+
+.opt-btn {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  color: var(--text-2);
+  cursor: pointer;
+  transition: color 0.25s, background 0.25s var(--ease);
+}
+.opt-btn svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 0.6s var(--ease);
+}
+.opt-btn:hover,
+.opt-btn[aria-expanded="true"] {
+  color: var(--text);
+  background: var(--glass-strong);
+}
+.opt-btn:hover svg,
+.opt-btn[aria-expanded="true"] svg {
+  transform: rotate(60deg);
+}
+
+.options-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 12;
+  display: grid;
+  gap: 12px;
+  width: 300px;
+  max-width: calc(100vw - 2 * var(--gap));
+  padding: 16px;
+  background: var(--glass-strong);
+  animation: card-in 0.3s var(--ease) backwards;
+}
+.options-menu .eyebrow {
+  margin: 0;
+}
+.opt-group {
+  display: grid;
+  gap: 8px;
+}
+.opt-group-title {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.opt-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+}
+.opt-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.opt-text b {
+  font-weight: 500;
+}
+.opt-text small {
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+/* Interrupteur : lune à droite en sombre, soleil à gauche en clair */
+.switch {
+  position: relative;
+  flex: none;
+  width: 52px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  background: var(--well);
+  cursor: pointer;
+  transition: background 0.3s var(--ease), border-color 0.3s var(--ease);
+}
+.switch[aria-checked="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.switch:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #fff;
+  color: #141417;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  transition: transform 0.35s var(--ease);
+}
+.switch[aria-checked="true"] .switch-thumb {
+  transform: translateX(24px);
+  color: var(--accent);
+}
+.switch-thumb svg {
+  position: absolute;
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: opacity 0.25s, transform 0.35s var(--ease);
+}
+.switch .i-moon {
+  fill: currentColor;
+  stroke: none;
+}
+.switch[aria-checked="true"] .i-sun,
+.switch[aria-checked="false"] .i-moon {
+  opacity: 0;
+  transform: rotate(-90deg) scale(0.6);
 }

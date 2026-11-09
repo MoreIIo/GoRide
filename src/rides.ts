@@ -1,5 +1,6 @@
 /** Onglet « Sorties » : types renvoyés par le moteur, graphique et panneau de détail. */
 import { duration, km, meters } from "./format";
+import { THEME_EVENT } from "./theme";
 
 export interface ActivitySummary {
   id: number;
@@ -336,6 +337,7 @@ export class RideChart {
   ) {
     this.ctx = canvas.getContext("2d")!;
     new ResizeObserver(() => this.redraw()).observe(canvas);
+    window.addEventListener(THEME_EVENT, () => this.redraw());
     canvas.addEventListener("pointermove", (e) => {
       if (!this.s || this.s.distKm.length === 0) return;
       const total = this.s.distKm[this.s.distKm.length - 1];

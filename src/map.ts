@@ -1,7 +1,8 @@
 import maplibregl, { type GeoJSONSource, type LngLatBoundsLike, type Map as MlMap } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { Feature, FeatureCollection } from "geojson";
-import { DEM_ATTRIBUTION, DEM_TILES, loadBasemap, PLACEHOLDER_STYLE, type BasemapId } from "./basemaps";
+import { DEM_ATTRIBUTION, DEM_TILES, loadBasemap, placeholderStyle, type BasemapId } from "./basemaps";
+import { getTheme, type Theme } from "./theme";
 import type { Leg } from "./planner";
 import type { Track } from "./types";
 
@@ -36,6 +37,8 @@ export class TrackMap {
   readonly ready: Promise<void>;
   private resolveReady: (() => void) | null = null;
   private basemapToken = 0;
+  private basemap: BasemapId = "route";
+  private theme: Theme = getTheme();
   private track: Track | null = null;
   private hillshade = true;
   private terrain3d = false;
@@ -70,7 +73,7 @@ export class TrackMap {
     this.ready = new Promise((res) => (this.resolveReady = res));
     this.map = new maplibregl.Map({
       container,
-      style: PLACEHOLDER_STYLE,
+      style: placeholderStyle(this.theme),
       // Ouverture : la Terre entière, avant le vol jusqu'à la maison
       center: [4, 30],
       zoom: 1.15,
@@ -262,8 +265,9 @@ export class TrackMap {
   }
 
   setBasemap(id: BasemapId) {
+    this.basemap = id;
     const token = ++this.basemapToken;
-    loadBasemap(id).then((style) => {
+    loadBasemap(id, this.theme).then((style) => {
       if (token !== this.basemapToken) return; // un autre fond a été choisi entre-temps
       this.map.setStyle(style, { diff: false });
       this.map.once("idle", () => {
@@ -271,6 +275,13 @@ export class TrackMap {
         this.resolveReady = null;
       });
     });
+  }
+
+  /** Thème clair ou sombre : recharge le fond de carte dans la bonne version (trace et relief sont remis). */
+  setTheme(theme: Theme) {
+    if (theme === this.theme) return;
+    this.theme = theme;
+    this.setBasemap(this.basemap);
   }
 
   setHillshade(on: boolean) {
@@ -400,11 +411,12 @@ export class TrackMap {
     const m = this.map;
     // Globe aux petites échelles (vol d'ouverture), Mercator classique dès qu'on zoome.
     m.setProjection({ type: "globe" });
-    // Ciel nocturne avec une lueur orangée à l'horizon, visible en 3D.
+    // Ciel nocturne avec une lueur orangée à l'horizon (clair : ciel de jour brumeux), visible en 3D.
+    const light = this.theme === "light";
     m.setSky({
-      "sky-color": "#08080a",
-      "horizon-color": "#2a160c",
-      "fog-color": "#0b0b0d",
+      "sky-color": light ? "#a9c8e8" : "#08080a",
+      "horizon-color": light ? "#f4ece2" : "#2a160c",
+      "fog-color": light ? "#eeede9" : "#0b0b0d",
       "sky-horizon-blend": 0.55,
       "horizon-fog-blend": 0.7,
       "fog-ground-blend": 0.35,
@@ -423,8 +435,8 @@ export class TrackMap {
         source: "dem-hillshade",
         layout: { visibility: this.hillshade ? "visible" : "none" },
         paint: {
-          "hillshade-exaggeration": 0.45,
-          "hillshade-shadow-color": "#000000",
+          "hillshade-exaggeration": light ? 0.35 : 0.45,
+          "hillshade-shadow-color": light ? "#3b3a40" : "#000000",
           "hillshade-highlight-color": "rgba(255, 236, 220, 0.16)",
           "hillshade-accent-color": "#000000",
         },
@@ -491,7 +503,7 @@ export class TrackMap {
       filter: ["==", ["get", "s"], "Assumed"],
       layout: { "line-join": "round" },
       paint: {
-        "line-color": "rgba(255, 255, 255, 0.85)",
+        "line-color": light ? "rgba(20, 20, 23, 0.75)" : "rgba(255, 255, 255, 0.85)",
         "line-width": width(1.2, 2.5),
         "line-dasharray": [2, 2.5],
       },
