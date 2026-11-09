@@ -4,7 +4,8 @@ Lancé par .github/workflows/android.yml, depuis la racine du dépôt :
   python3 scripts/android-ci.py <dossier des icônes générées> <keystore.jks> <mot de passe>
 
 - icônes : celles de src-tauri/icons/icon-android.svg (même logo que sur PC), fond sombre ;
-- signature : la clé de GoRide, pour que chaque version s'installe par-dessus la précédente.
+- signature : la clé de GoRide, pour que chaque version s'installe par-dessus la précédente ;
+- compileSdk des plugins aligné sur celui de Tauri.
 """
 import pathlib
 import shutil
@@ -12,6 +13,18 @@ import sys
 
 ANDROID = pathlib.Path("src-tauri/gen/android")
 RES = ANDROID / "app/src/main/res"
+
+COMPILE_SDK_FIX = """
+// GoRide : compileSdk des modules de plugins relevé au niveau demandé par Tauri
+// (tauri-plugin-sharekit vise encore Android 15, la vérification AAR échouerait).
+subprojects {
+    afterEvaluate {
+        extensions.findByType(com.android.build.gradle.LibraryExtension::class.java)?.let {
+            if ((it.compileSdk ?: 0) < 36) it.compileSdk = 36
+        }
+    }
+}
+"""
 
 icons, keystore, password = sys.argv[1], sys.argv[2], sys.argv[3]
 
@@ -53,4 +66,11 @@ if "signingConfigs" not in s:
         1,
     )
     gradle.write_text(s)
-print("Projet Android prêt : icônes GoRide et signature.")
+# 3. Plugin de partage compilé pour Android 15 alors que Tauri demande Android 16 (compileSdk 36)
+root = ANDROID / "build.gradle.kts"
+r = root.read_text()
+if "GoRide : compileSdk" not in r:
+    r += COMPILE_SDK_FIX
+    root.write_text(r)
+
+print("Projet Android prêt : icônes GoRide, signature, compileSdk des plugins.")
