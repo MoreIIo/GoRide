@@ -4319,11 +4319,18 @@ body.mode-rides .coach-float {
 }
 
 
-/* --- Version téléphone ------------------------------------------------------------------ */
+/* ==========================================================================
+   Version téléphone (body.mobile, posé au démarrage sur Android / iPhone)
+   ========================================================================== */
+
 /* Le coach IA tourne avec Ollama sur un PC : il n'existe pas encore sur mobile. */
 body.mobile [data-mode="coach"],
 body.mobile #coach-float,
-body.mobile #ride-coach { display: none !important; }
+body.mobile #ride-coach,
+/* « Préparer toute la France » : 4,6 Go et beaucoup de mémoire, pas pour un téléphone */
+body.mobile .nm-france {
+  display: none !important;
+}
 
 /* Encoches, caméra, barre d'état et barre de gestes : l'appli dessine sous ces zones,
    on garde donc une marge. env() donne la vraie valeur ; le minimum couvre les WebView
@@ -4338,9 +4345,14 @@ body.mobile {
   --basemaps-h: 34px;
   /* barre du haut + rangée des fonds de carte */
   --top: calc(var(--safe-t) + var(--bar-h) + 8px + var(--basemaps-h) + 10px);
-  --left-w: calc(100vw - var(--gap) - var(--rail));
-  --profile-h: 150px;
-  --chart-h: 170px;
+  --profile-h: 132px;
+  --chart-h: 160px;
+  /* Barre d'outils tout en bas ; profil et tiroirs s'empilent au-dessus */
+  --tb-h: 58px;
+  --base: calc(var(--safe-b) + var(--tb-h) + 8px);
+}
+body.mobile.mode-rides {
+  --base: var(--safe-b);
 }
 /* Le voile sombre des bords écrasait toute la carte sur un écran étroit */
 body.mobile .vignette {
@@ -4360,14 +4372,12 @@ body.mobile .nav {
   height: var(--bar-h);
   padding: 0 2px;
 }
-body.mobile .nav .brand {
+body.mobile .nav .brand,
+body.mobile .menu-btn .chev {
   display: none;
 }
 body.mobile .menu-btn {
   padding: 0 10px;
-}
-body.mobile .menu-btn .chev {
-  display: none;
 }
 body.mobile .search {
   flex: 1 1 auto;
@@ -4382,7 +4392,10 @@ body.mobile .search input {
   min-width: 0;
   font-size: 16px; /* en dessous de 16 px, iOS zoome sur le champ */
 }
+/* Menus et fonds de carte se placent par rapport à la barre entière (pas en « fixed » :
+   l'animation d'ouverture de la barre les décalerait). */
 body.mobile .top-right {
+  position: static;
   flex: none;
   gap: 6px;
 }
@@ -4402,11 +4415,6 @@ body.mobile .search-results {
   width: auto;
   max-height: 50vh;
 }
-/* Menus et fonds de carte se placent par rapport à la barre entière (pas en « fixed » :
-   l'animation d'ouverture de la barre les décalerait). */
-body.mobile .top-right {
-  position: static;
-}
 body.mobile .net-menu,
 body.mobile .options-menu {
   position: absolute;
@@ -4418,8 +4426,6 @@ body.mobile .options-menu {
   max-height: calc(100vh - var(--safe-t) - var(--bar-h) - var(--safe-b) - 24px);
   overflow-y: auto;
 }
-
-/* Fonds de carte : petite rangée sous la barre, à gauche */
 body.mobile .top-right .basemaps {
   position: absolute;
   top: calc(100% + 8px);
@@ -4443,66 +4449,213 @@ body.mobile .dock-btn {
   height: 38px;
 }
 
-/* --- Panneaux : toute la largeur à gauche du dock, sous la barre ------------------------ */
+/* --- Barre d'outils : toute la largeur, collée en bas ---------------------------------- */
+body.mobile .tooldock,
+body.mobile:not(.menu-closed):has(#stats:not(.hidden)) .tooldock,
+body.mobile:has(#loop-panel:not(.hidden)) .tooldock,
+body.mobile:has(#library-panel:not(.hidden)) .tooldock {
+  left: var(--gap);
+  right: var(--gap);
+  bottom: var(--safe-b);
+  width: auto;
+  max-width: none;
+  gap: 8px;
+}
+/* Consigne de tracé : le titre suffit (le détail parle de souris et de clic droit) */
+body.mobile #empty-text {
+  display: none;
+}
+body.mobile .toolbar {
+  width: 100%;
+  gap: 2px;
+  padding: 5px;
+}
+body.mobile .toolbar .tools {
+  display: contents;
+}
+body.mobile .toolbar .tools.hidden {
+  display: none;
+}
+body.mobile .toolbar > *,
+body.mobile .toolbar .tools > * {
+  flex: 1 1 0;
+  min-width: 0;
+}
+body.mobile .toolbar .btn,
+body.mobile .toolbar .icon-btn {
+  width: auto;
+  height: 46px;
+  padding: 0;
+  justify-content: center;
+}
+body.mobile .toolbar .tsep,
+body.mobile #btn-settings .chev {
+  display: none;
+}
+/* Réglages du tracé : panneau pleine largeur au-dessus de la barre */
+body.mobile .tooldock .settings {
+  width: 100%;
+  max-height: calc(100vh - var(--top) - var(--tb-h) - var(--safe-b) - 16px);
+  z-index: 8;
+}
+body.mobile .hint-bar {
+  max-width: 100%;
+}
+
+/* --- Profil altimétrique et courbes : bande au-dessus de la barre d'outils -------------- */
+body.mobile .profile {
+  bottom: var(--base);
+  width: calc(100% - 2 * var(--gap));
+}
+body.mobile .toast {
+  bottom: calc(var(--base) + var(--reserve) + 12px);
+  max-width: calc(100% - 2 * var(--gap));
+}
+/* L'échelle passe en haut à gauche, sous les fonds de carte : en bas, les tiroirs la cachent */
+body.mobile .maplibregl-ctrl-bottom-left {
+  top: calc(var(--safe-t) + var(--bar-h) + 8px + var(--basemaps-h) + 4px);
+  bottom: auto;
+}
+body.mobile .maplibregl-ctrl-bottom-right {
+  bottom: calc(var(--base) + var(--reserve) - 6px);
+}
+
+/* --- Tiroirs : les panneaux montent du bas de l'écran ---------------------------------- */
 body.mobile .stats,
 body.mobile .loop-panel,
 body.mobile .library-panel,
-body.mobile .rides-panel {
-  left: var(--gap);
-  width: auto;
-  right: var(--rail);
-  padding: 16px 14px 14px 16px;
-}
-body.mobile .stats,
-body.mobile .loop-panel {
-  max-height: calc(100% - var(--top) - var(--safe-b) - var(--reserve) - 80px);
-}
-body.mobile .library-panel,
 body.mobile .rides-panel,
-body.mobile .ride-detail,
-body.mobile .progress-panel {
-  bottom: calc(var(--safe-b) + var(--reserve));
-}
-/* Le détail d'une sortie et la progression recouvrent la liste */
-body.mobile .ride-detail,
-body.mobile .progress-panel {
+body.mobile .ride-detail {
+  --peek: 92px;
+  top: auto;
   left: var(--gap);
-  right: var(--rail);
+  right: var(--gap);
   width: auto;
-  z-index: 4;
-  padding: 16px;
+  bottom: calc(var(--base) + var(--reserve));
+  z-index: 7;
+  max-height: var(--peek);
+  overflow: hidden;
+  padding: 30px 16px 16px;
+  transition: max-height 0.35s var(--ease), bottom 0.35s var(--ease);
+  animation: sheet-in 0.4s var(--ease) backwards;
+}
+body.mobile .stats.expanded,
+body.mobile .loop-panel.expanded,
+body.mobile .library-panel.expanded,
+body.mobile .rides-panel.expanded,
+body.mobile .ride-detail.expanded {
+  max-height: calc(100% - var(--top) - var(--base) - var(--reserve));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+/* Poignée : un toucher dans la bande du haut plie ou déplie le tiroir */
+body.mobile .stats::before,
+body.mobile .loop-panel::before,
+body.mobile .library-panel::before,
+body.mobile .rides-panel::before,
+body.mobile .ride-detail::before {
+  content: "";
+  position: absolute;
+  top: 11px;
+  left: 50%;
+  width: 40px;
+  height: 4px;
+  margin-left: -20px;
+  border-radius: 2px;
+  background: var(--line-2);
 }
 body.mobile .card h2 {
   white-space: normal;
 }
-
-/* --- Bas de l'écran : barre d'outils, profil, messages ------------------------------- */
-body.mobile .tooldock {
-  bottom: calc(var(--safe-b) + var(--reserve));
-  max-width: calc(100% - 2 * var(--gap));
+body.mobile .rides-panel {
+  --peek: 96px;
 }
-body.mobile .toolbar .btn,
-body.mobile .toolbar .icon-btn {
-  height: 46px;
-  min-width: 46px;
-}
-body.mobile .tooldock .settings {
-  width: calc(100vw - 2 * var(--gap));
-  max-height: calc(100vh - var(--top) - var(--safe-b) - var(--reserve) - 70px);
-}
-body.mobile .profile {
-  bottom: var(--safe-b);
-  width: calc(100% - 2 * var(--gap));
-}
-body.mobile .toast {
-  bottom: calc(var(--safe-b) + var(--reserve) + 70px);
-  max-width: calc(100% - 2 * var(--gap));
-}
-body.mobile .maplibregl-ctrl-bottom-left,
-body.mobile .maplibregl-ctrl-bottom-right {
-  bottom: calc(var(--safe-b) + var(--reserve) + 56px);
-}
-/* « Préparer toute la France » : 4,6 Go et beaucoup de mémoire, pas pour un téléphone */
-body.mobile .nm-france {
+/* Une sortie ouverte remplace la liste ; « Mes sorties » ramène à la liste */
+body.mobile:has(#ride-detail:not(.hidden)) #rides-panel {
   display: none;
+}
+body.mobile .ride-detail {
+  --peek: 150px;
+  padding-top: 26px;
+}
+body.mobile .ride-back {
+  margin: 0 0 10px -6px;
+  padding: 0 10px 0 4px;
+  border-color: transparent;
+}
+body.mobile .ride-back svg {
+  width: 16px;
+  height: 16px;
+}
+/* La progression s'affiche en plein écran sous la barre du haut */
+body.mobile .progress-panel {
+  top: var(--top);
+  left: var(--gap);
+  right: var(--gap);
+  bottom: var(--safe-b);
+  z-index: 8;
+  padding: 18px 16px;
+}
+
+/* Itinéraire replié : titre puis distance, dénivelé et temps sur une ligne */
+body.mobile .stats {
+  --peek: 126px;
+  display: flex;
+  flex-direction: column;
+}
+body.mobile .stats > .eyebrow {
+  display: none;
+}
+body.mobile .stats > h2 {
+  order: 1;
+  margin-bottom: 10px;
+  font-size: 17px;
+}
+body.mobile .stats > dl {
+  order: 2;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px 10px;
+}
+body.mobile .stats > .save-btn {
+  order: 3;
+  flex: none;
+  margin-bottom: 14px;
+}
+body.mobile .stats > :not(h2, dl, .save-btn, .eyebrow) {
+  order: 4;
+}
+body.mobile .stats dl > div,
+body.mobile .stats dl > .hero,
+body.mobile .stats dl > div:last-child {
+  grid-column: auto;
+  padding: 0;
+  border: 0;
+}
+body.mobile .stats dl > .hero {
+  order: 1;
+}
+body.mobile .stats dl > div:nth-child(2) {
+  order: 2;
+}
+body.mobile .stats dl > div:last-child {
+  order: 3;
+}
+body.mobile .stats dl > div:nth-child(3),
+body.mobile .stats dl > div:nth-child(4) {
+  order: 4;
+}
+body.mobile .stats dd,
+body.mobile .stats .hero dd {
+  font-size: 20px;
+  white-space: nowrap;
+}
+body.mobile .stats dt {
+  white-space: nowrap;
+}
+body.mobile .stats > dl {
+  grid-template-columns: 1.1fr 0.9fr 1.1fr;
+}
+body.mobile .stats dt input {
+  width: 34px;
+  padding: 1px 3px;
 }

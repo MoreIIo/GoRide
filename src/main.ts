@@ -33,6 +33,43 @@ const inTauri = "__TAURI_INTERNALS__" in window;
 const isMobile = /Android|iPhone|iPad/i.test(navigator.userAgent);
 if (isMobile) document.body.classList.add("mobile");
 
+/**
+ * Sur téléphone, les panneaux deviennent des tiroirs qui montent du bas de l'écran.
+ * Repliés, ils n'en montrent que le haut (titre, distance…) ; la poignée les déplie.
+ */
+const SHEETS = ["stats", "loop-panel", "library-panel", "rides-panel", "ride-detail"];
+function setSheet(id: string, open: boolean) {
+  document.getElementById(id)?.classList.toggle("expanded", open);
+}
+if (isMobile) {
+  for (const id of ["loop-panel", "library-panel", "rides-panel"]) setSheet(id, true);
+  for (const id of SHEETS) {
+    const el = document.getElementById(id)!;
+    // La poignée est dessinée en CSS : un toucher dans la bande du haut plie ou déplie.
+    el.addEventListener("click", (e) => {
+      if (e.clientY - el.getBoundingClientRect().top < 30) el.classList.toggle("expanded");
+    });
+  }
+  // Toucher la carte (pour poser un point, choisir un départ…) replie les tiroirs.
+  document.getElementById("map")!.addEventListener("pointerdown", () => {
+    for (const id of SHEETS) setSheet(id, false);
+  });
+  // Boucles ou bibliothèque qu'on ouvre : tiroir déplié d'emblée.
+  for (const id of ["loop-panel", "library-panel"]) {
+    const el = document.getElementById(id)!;
+    let wasHidden = el.classList.contains("hidden");
+    new MutationObserver(() => {
+      const hidden = el.classList.contains("hidden");
+      if (wasHidden && !hidden) setSheet(id, true);
+      wasHidden = hidden;
+    }).observe(el, { attributes: true, attributeFilter: ["class"] });
+  }
+  // Des boucles viennent d'être proposées : on déplie pour les montrer.
+  new MutationObserver(() => {
+    if (document.getElementById("loop-list")!.children.length > 0) setSheet("loop-panel", true);
+  }).observe(document.getElementById("loop-list")!, { childList: true });
+}
+
 interface Share<T> {
   kind: T;
   meters: number;
@@ -702,7 +739,10 @@ function renderRideDetail() {
     chart.classList.add("hidden");
     return;
   }
-  panel.innerHTML = rideDetailHtml(rideDetail, athlete);
+  panel.innerHTML =
+    (isMobile
+      ? `<button id="ride-back" class="btn ghost small ride-back"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6" /></svg>Mes sorties</button>`
+      : "") + rideDetailHtml(rideDetail, athlete);
   panel.classList.remove("hidden");
   panel.scrollTop = 0;
   if (inTauri) coach.mountRide($("ride-coach"), rideDetail.summary.id);
@@ -889,6 +929,15 @@ $("chart-tabs").addEventListener("click", (e) => {
 $("ride-detail").addEventListener("click", async (e) => {
   const target = e.target as HTMLElement;
   if (!rideDetail) return;
+  if (target.closest("#ride-back")) {
+    // Téléphone : retour à la liste des sorties
+    rideDetail = null;
+    renderRideDetail();
+    renderRideList();
+    trackMap.clearTrack();
+    setSheet("rides-panel", true);
+    return;
+  }
   const id = rideDetail.summary.id;
   if (target.closest("#ride-delete")) {
     const ok = await ask(`Supprimer « ${rideDetail.summary.name} » de GoRide ? Le fichier d'origine n'est pas touché.`, {

@@ -392,6 +392,17 @@ export class TrackMap {
       const el = document.getElementById(id);
       return el && el.getClientRects().length > 0 ? el.getBoundingClientRect() : null;
     };
+    if (document.body.classList.contains("mobile")) {
+      // Téléphone : tiroirs, profil et barre d'outils en bas, dock à droite.
+      const bottomTop = Math.min(
+        H,
+        ...["stats", "loop-panel", "library-panel", "rides-panel", "ride-detail", "profile", "ride-chart", "toolbar"].map(
+          (id) => shown(id)?.top ?? H,
+        ),
+      );
+      const top = (shown("dock")?.top ?? 100) + 10;
+      return { top, left: 30, right: 70, bottom: Math.max(40, H - bottomTop + 24) };
+    }
     const left = Math.max(0, ...["stats", "loop-panel", "library-panel", "rides-panel"].map((id) => shown(id)?.right ?? 0));
     const rightEdge = Math.min(W - 64, ...["settings", "ride-detail"].map((id) => shown(id)?.left ?? W));
     const sheet = shown("profile") ?? shown("ride-chart");
