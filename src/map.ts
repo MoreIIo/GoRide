@@ -104,6 +104,13 @@ export class TrackMap {
   drawing = false;
   onMapClick: ((p: [number, number]) => void) | null = null;
   onRouteClick: ((legIndex: number, p: [number, number]) => void) | null = null;
+  /** Glisser le tracé pour le remodeler : appui sur l'étape, déplacement, lâcher. */
+  onRouteDragStart: ((legIndex: number, p: [number, number]) => void) | null = null;
+  onRouteDragMove: ((p: [number, number]) => void) | null = null;
+  onRouteDragEnd: ((p: [number, number]) => void) | null = null;
+  private ghost: maplibregl.Marker | null = null;
+  /** Après un glisser du tracé, le « clic » que le navigateur envoie au lâcher est ignoré. */
+  private quietClickUntil = 0;
   /** Clic hors mode tracé : infos sur le lieu cliqué. */
   onMapInfo: ((p: [number, number]) => void) | null = null;
   /** Mode boucle : un clic choisit le départ, un clic sur une proposition la sélectionne. */
@@ -157,7 +164,9 @@ export class TrackMap {
       else if (this.terrain3d && pitch < PITCH_TO_2D) this.setView3d(false, false);
     });
 
+    this.installRouteDrag();
     this.map.on("click", (e) => {
+      if (Date.now() < this.quietClickUntil) return;
       if (this.loopPicking) {
         const box: [maplibregl.PointLike, maplibregl.PointLike] = [
           [e.point.x - 6, e.point.y - 6],
@@ -184,6 +193,154 @@ export class TrackMap {
         : undefined;
       if (hit && this.onRouteClick) this.onRouteClick(hit.properties.leg as number, p);
       else this.onMapClick?.(p);
+    });
+  }
+
+  private routeHit(point: maplibregl.Point, pad: number) {
+    if (!this.drawing || !this.map.getLayer("route-casing")) return undefined;
+    const box: [maplibregl.PointLike, maplibregl.PointLike] = [
+      [point.x - pad, point.y - pad],
+      [point.x + pad, point.y + pad],
+    ];
+    return this.map.queryRenderedFeatures(box, { layers: ["route-casing"] })[0];
+  }
+
+  private ghostAt(p: [number, number]) {
+    if (!this.ghost) {
+      const el = document.createElement("div");
+      el.className = "wp via ghost";
+      this.ghost = new maplibregl.Marker({ element: el }).setLngLat(p).addTo(this.map);
+    } else this.ghost.setLngLat(p);
+  }
+
+  /**
+   * Remodeler le tracé : à la souris, appuyer sur la ligne et glisser ; au doigt, appui long
+   * sur la ligne puis glisser (un simple glisser déplace la carte). Un point de passage
+   * naît là où on lâche.
+   */
+  private installRouteDrag() {
+    const m = this.map;
+    let leg = -1;
+    let from: maplibregl.Point | null = null;
+    let last: [number, number] | null = null;
+    let active = false;
+    let timer = 0;
+    const at = (e: { lngLat: maplibregl.LngLat }): [number, number] => [e.lngLat.lng, e.lngLat.lat];
+    const start = (p: [number, number]) => {
+      active = true;
+      last = p;
+      this.ghostAt(p);
+      m.getCanvas().style.cursor = "grabbing";
+      this.onRouteDragStart?.(leg, p);
+    };
+    const move = (p: [number, number]) => {
+      last = p;
+      this.ghostAt(p);
+      this.onRouteDragMove?.(p);
+    };
+    const reset = () => {
+      leg = -1;
+      from = null;
+      active = false;
+      this.ghost?.remove();
+      this.ghost = null;
+      m.getCanvas().style.cursor = this.drawing ? "crosshair" : "";
+    };
+    const finish = () => {
+      if (active && last) {
+        this.quietClickUntil = Date.now() + 400;
+        this.onRouteDragEnd?.(last);
+      }
+      reset();
+    };
+
+    // Souris
+    m.on("mousedown", (e) => {
+      if (e.originalEvent.button !== 0) return;
+      const hit = this.routeHit(e.point, 5);
+      if (!hit) return;
+      e.preventDefault(); // la carte ne se déplace pas
+      leg = hit.properties.leg as number;
+      from = e.point;
+      const onMove = (ev: maplibregl.MapMouseEvent) => {
+        if (!active && from && from.dist(ev.point) > 4) start(at(ev));
+        else if (active) move(at(ev));
+      };
+      m.on("mousemove", onMove);
+      // Lâcher n'importe où (même hors de la carte) termine le glisser
+      window.addEventListener(
+        "mouseup",
+        () => {
+          m.off("mousemove", onMove);
+          finish();
+        },
+        { once: true },
+      );
+    });
+
+    // Doigt : appui long sur la ligne, puis glisser. Écouteurs natifs (non passifs) sur la
+    // zone de la carte : le téléphone ne doit ni défiler, ni ouvrir son menu d'appui long.
+    const box = m.getCanvasContainer();
+    const local = (t: Touch) => {
+      const r = box.getBoundingClientRect();
+      return new maplibregl.Point(t.clientX - r.left, t.clientY - r.top);
+    };
+    const lngLat = (pt: maplibregl.Point): [number, number] => {
+      const ll = m.unproject(pt);
+      return [ll.lng, ll.lat];
+    };
+    box.addEventListener(
+      "touchstart",
+      (ev) => {
+        clearTimeout(timer);
+        if (ev.touches.length !== 1) {
+          if (active) touchEnd();
+          return;
+        }
+        const pt = local(ev.touches[0]);
+        const hit = this.routeHit(pt, 14);
+        if (!hit) return;
+        leg = hit.properties.leg as number;
+        from = pt;
+        timer = window.setTimeout(() => {
+          if (!from) return;
+          m.stop();
+          m.dragPan.disable();
+          navigator.vibrate?.(15);
+          start(lngLat(from));
+        }, 300);
+      },
+      { passive: true },
+    );
+    box.addEventListener(
+      "touchmove",
+      (ev) => {
+        const t = ev.touches[0];
+        if (!t) return;
+        const pt = local(t);
+        if (!active) {
+          // Le doigt a bougé avant l'appui long : c'est un déplacement de carte
+          if (from && from.dist(pt) > 12) {
+            clearTimeout(timer);
+            from = null;
+          }
+          return;
+        }
+        ev.preventDefault();
+        move(lngLat(pt));
+      },
+      { passive: false },
+    );
+    const touchEnd = () => {
+      clearTimeout(timer);
+      if (active) m.dragPan.enable();
+      finish();
+    };
+    box.addEventListener("touchend", touchEnd);
+    box.addEventListener("touchcancel", touchEnd);
+    // Appui long sur Android / iPhone : pas de menu contextuel ni de sélection
+    box.addEventListener("contextmenu", (ev) => {
+      if (document.body.classList.contains("mobile")) ev.preventDefault();
     });
   }
 

@@ -267,6 +267,9 @@ function updateEmptyCard() {
 
 trackMap.onMapClick = (p) => planner.add(p);
 trackMap.onRouteClick = (leg, p) => planner.insert(leg, p);
+trackMap.onRouteDragStart = (leg, p) => planner.beginInsertDrag(leg, p);
+trackMap.onRouteDragMove = (p) => planner.moveInsertDrag(p);
+trackMap.onRouteDragEnd = (p) => planner.endInsertDrag(p);
 
 // --- Panneau de réglages -------------------------------------------------------
 

@@ -900,6 +900,76 @@ h2 {
 .wp:active {
   cursor: grabbing;
 }
+/* Point qui naît en glissant le tracé */
+.wp.ghost {
+  pointer-events: none;
+  box-shadow: 0 0 0 6px rgba(252, 76, 2, 0.3), 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+
+/* Menu d'un point de passage (clic sur le point) */
+.wp-pop {
+  z-index: 8;
+}
+.wp-pop .maplibregl-popup-content {
+  padding: 4px;
+  border: 1px solid var(--line-2);
+  border-radius: 0;
+  background: var(--glass-strong);
+  -webkit-backdrop-filter: var(--blur);
+  backdrop-filter: var(--blur);
+  box-shadow: var(--shadow), var(--edge);
+  color: var(--text);
+  font: inherit;
+}
+.wp-pop.maplibregl-popup-anchor-bottom .maplibregl-popup-tip {
+  border-top-color: var(--glass-strong);
+}
+.wp-pop.maplibregl-popup-anchor-top .maplibregl-popup-tip {
+  border-bottom-color: var(--glass-strong);
+}
+.wp-pop.maplibregl-popup-anchor-left .maplibregl-popup-tip {
+  border-right-color: var(--glass-strong);
+}
+.wp-pop.maplibregl-popup-anchor-right .maplibregl-popup-tip {
+  border-left-color: var(--glass-strong);
+}
+.wp-menu {
+  display: flex;
+  flex-direction: column;
+  min-width: 180px;
+}
+.wp-menu-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: 500 14px/1.2 var(--font);
+  text-align: left;
+  cursor: pointer;
+}
+.wp-menu-btn:hover {
+  background: var(--surface-3);
+}
+.wp-menu-btn svg {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.wp-menu-btn:last-child svg {
+  stroke: var(--red);
+}
+body.mobile .wp-menu-btn {
+  padding: 13px 14px;
+  font-size: 15px;
+}
 
 /* ==========================================================================
    Profil altimétrique et courbes (bas de l'écran)
@@ -4696,4 +4766,11 @@ body.mobile * {
 body.mobile .maplibregl-canvas-container,
 body.mobile .maplibregl-canvas {
   touch-action: none;
+}
+
+/* Appui long sur la carte (remodeler le tracé) : ni loupe, ni sélection, ni menu */
+body.mobile .maplibregl-canvas-container {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
 }

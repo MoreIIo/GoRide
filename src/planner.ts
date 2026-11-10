@@ -61,6 +61,9 @@ export class Planner {
   private future: LngLat[][] = [];
   private dragBusy = false;
   private dragPending: (() => void) | null = null;
+  /** Glisser du tracé en cours : étape dans laquelle le nouveau point s'insère. */
+  private insertDrag: number | null = null;
+  private menu: maplibregl.Popup | null = null;
 
   constructor(
     private map: maplibregl.Map,
@@ -116,6 +119,46 @@ export class Planner {
     const wps = [...this.waypoints];
     wps.splice(legIndex + 1, 0, snapped);
     await this.commit(wps);
+  }
+
+  /** Termine l'itinéraire au point `i` : on y revient après le dernier point (départ = boucle). */
+  async finishAt(i: number): Promise<boolean> {
+    const p = this.waypoints[i];
+    if (!p || this.waypoints.length < 2 || i === this.waypoints.length - 1) return false;
+    return this.commit([...this.waypoints, p]);
+  }
+
+  // --- Glisser le tracé : un nouveau point naît dans l'étape et suit le pointeur ---------
+
+  beginInsertDrag(leg: number, p: LngLat) {
+    if (leg < 0 || leg >= this.waypoints.length - 1) return;
+    this.menu?.remove();
+    this.insertDrag = leg;
+    this.moveInsertDrag(p);
+  }
+
+  moveInsertDrag(p: LngLat) {
+    const leg = this.insertDrag;
+    if (leg === null) return;
+    this.dragPending = () => this.previewInsert(leg, p);
+    if (!this.dragBusy) this.runDrag();
+  }
+
+  async endInsertDrag(p: LngLat) {
+    const leg = this.insertDrag;
+    this.insertDrag = null;
+    this.dragPending = null;
+    if (leg === null) return;
+    // Hors de toute route (ou région absente) : le tracé reprend sa forme d'avant
+    if (!(await this.insertAt(leg + 1, p))) this.refresh();
+  }
+
+  private async previewInsert(leg: number, p: LngLat) {
+    const wps = [...this.waypoints];
+    wps.splice(leg + 1, 0, p);
+    if ((await this.ensureLegs(wps, true)) && this.insertDrag !== null) {
+      this.cb.onChange(this.currentLegs(wps), false);
+    }
   }
 
   /** Insère un point à la position `index` (0 = nouveau départ, `count` = nouvelle arrivée). */
@@ -303,6 +346,7 @@ export class Planner {
   }
 
   private setWaypoints(wps: LngLat[]) {
+    this.menu?.remove();
     this.waypoints = wps;
     this.markers.forEach((m) => m.remove());
     this.markers = wps.map((p, i) => this.makeMarker(p, i, wps.length));
@@ -325,15 +369,28 @@ export class Planner {
     const role = i === 0 ? (closed ? "start-end" : "start") : i === n - 1 ? (closed ? "loop-end" : "end") : "via";
     el.className = `wp ${role}`;
     el.textContent = role === "loop-end" ? "" : String(i + 1);
-    el.title = "Glisser pour déplacer · clic droit pour supprimer";
+    el.title = "Glisser pour déplacer · clic pour les options · clic droit pour supprimer";
     el.addEventListener("contextmenu", (e) => {
       e.preventDefault();
       e.stopPropagation();
       this.remove(i);
     });
-    el.addEventListener("click", (e) => e.stopPropagation());
-
     const marker = new maplibregl.Marker({ element: el, draggable: true }).setLngLat(p).addTo(this.map);
+
+    // Un clic (sans glisser) ouvre le petit menu du point
+    let dragged = false;
+    marker.on("dragstart", () => {
+      dragged = true;
+      this.menu?.remove();
+    });
+    el.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (dragged) {
+        dragged = false;
+        return;
+      }
+      this.openMenu(i);
+    });
 
     // Pendant le glisser : recalcul en continu des deux étapes voisines (une requête à la fois)
     marker.on("drag", () => {
@@ -360,6 +417,33 @@ export class Planner {
       }
     });
     return marker;
+  }
+
+  private openMenu(i: number) {
+    this.menu?.remove();
+    const n = this.waypoints.length;
+    const closed = n > 2 && wps_equal(this.waypoints[0], this.waypoints[n - 1]);
+    const box = document.createElement("div");
+    box.className = "wp-menu";
+    const item = (label: string, icon: string, run: () => Promise<unknown>) => {
+      const b = document.createElement("button");
+      b.className = "wp-menu-btn";
+      b.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${icon}</svg><span>${label}</span>`;
+      b.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.menu?.remove();
+        run();
+      });
+      box.appendChild(b);
+    };
+    if (n >= 2 && i < n - 1 && !(i === 0 && closed)) {
+      item(i === 0 ? "Finir au départ (boucle)" : "Finir ici", '<path d="M6 21V4M6 4h11l-2 4 2 4H6" />', () => this.finishAt(i));
+    }
+    item("Supprimer ce point", '<path d="M5 7h14M10 7V5h4v2M7 7l1 13h8l1-13" />', () => this.remove(i));
+    this.menu = new maplibregl.Popup({ closeButton: false, offset: 16, className: "wp-pop", maxWidth: "none" })
+      .setLngLat(this.waypoints[i])
+      .setDOMContent(box)
+      .addTo(this.map);
   }
 
   private async runDrag() {
