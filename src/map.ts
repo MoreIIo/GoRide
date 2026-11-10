@@ -104,6 +104,13 @@ export class TrackMap {
   drawing = false;
   onMapClick: ((p: [number, number]) => void) | null = null;
   onRouteClick: ((legIndex: number, p: [number, number]) => void) | null = null;
+  /** Glisser le tracé pour le remodeler : appui sur l'étape, déplacement, lâcher. */
+  onRouteDragStart: ((legIndex: number, p: [number, number]) => void) | null = null;
+  onRouteDragMove: ((p: [number, number]) => void) | null = null;
+  onRouteDragEnd: ((p: [number, number]) => void) | null = null;
+  private ghost: maplibregl.Marker | null = null;
+  /** Après un glisser du tracé, le « clic » que le navigateur envoie au lâcher est ignoré. */
+  private quietClickUntil = 0;
   /** Clic hors mode tracé : infos sur le lieu cliqué. */
   onMapInfo: ((p: [number, number]) => void) | null = null;
   /** Mode boucle : un clic choisit le départ, un clic sur une proposition la sélectionne. */
@@ -157,7 +164,9 @@ export class TrackMap {
       else if (this.terrain3d && pitch < PITCH_TO_2D) this.setView3d(false, false);
     });
 
+    this.installRouteDrag();
     this.map.on("click", (e) => {
+      if (Date.now() < this.quietClickUntil) return;
       if (this.loopPicking) {
         const box: [maplibregl.PointLike, maplibregl.PointLike] = [
           [e.point.x - 6, e.point.y - 6],
@@ -185,6 +194,123 @@ export class TrackMap {
       if (hit && this.onRouteClick) this.onRouteClick(hit.properties.leg as number, p);
       else this.onMapClick?.(p);
     });
+  }
+
+  private routeHit(point: maplibregl.Point, pad: number) {
+    if (!this.drawing || !this.map.getLayer("route-casing")) return undefined;
+    const box: [maplibregl.PointLike, maplibregl.PointLike] = [
+      [point.x - pad, point.y - pad],
+      [point.x + pad, point.y + pad],
+    ];
+    return this.map.queryRenderedFeatures(box, { layers: ["route-casing"] })[0];
+  }
+
+  private ghostAt(p: [number, number]) {
+    if (!this.ghost) {
+      const el = document.createElement("div");
+      el.className = "wp via ghost";
+      this.ghost = new maplibregl.Marker({ element: el }).setLngLat(p).addTo(this.map);
+    } else this.ghost.setLngLat(p);
+  }
+
+  /**
+   * Remodeler le tracé : à la souris, appuyer sur la ligne et glisser ; au doigt, appui long
+   * sur la ligne puis glisser (un simple glisser déplace la carte). Un point de passage
+   * naît là où on lâche.
+   */
+  private installRouteDrag() {
+    const m = this.map;
+    let leg = -1;
+    let from: maplibregl.Point | null = null;
+    let last: [number, number] | null = null;
+    let active = false;
+    let timer = 0;
+    const at = (e: { lngLat: maplibregl.LngLat }): [number, number] => [e.lngLat.lng, e.lngLat.lat];
+    const start = (p: [number, number]) => {
+      active = true;
+      last = p;
+      this.ghostAt(p);
+      m.getCanvas().style.cursor = "grabbing";
+      this.onRouteDragStart?.(leg, p);
+    };
+    const move = (p: [number, number]) => {
+      last = p;
+      this.ghostAt(p);
+      this.onRouteDragMove?.(p);
+    };
+    const reset = () => {
+      leg = -1;
+      from = null;
+      active = false;
+      this.ghost?.remove();
+      this.ghost = null;
+      m.getCanvas().style.cursor = this.drawing ? "crosshair" : "";
+    };
+    const finish = () => {
+      if (active && last) {
+        this.quietClickUntil = Date.now() + 400;
+        this.onRouteDragEnd?.(last);
+      }
+      reset();
+    };
+
+    // Souris
+    m.on("mousedown", (e) => {
+      if (e.originalEvent.button !== 0) return;
+      const hit = this.routeHit(e.point, 5);
+      if (!hit) return;
+      e.preventDefault(); // la carte ne se déplace pas
+      leg = hit.properties.leg as number;
+      from = e.point;
+      const onMove = (ev: maplibregl.MapMouseEvent) => {
+        if (!active && from && from.dist(ev.point) > 4) start(at(ev));
+        else if (active) move(at(ev));
+      };
+      m.on("mousemove", onMove);
+      // Lâcher n'importe où (même hors de la carte) termine le glisser
+      window.addEventListener(
+        "mouseup",
+        () => {
+          m.off("mousemove", onMove);
+          finish();
+        },
+        { once: true },
+      );
+    });
+
+    // Doigt : appui long sur la ligne
+    m.on("touchstart", (e) => {
+      clearTimeout(timer);
+      if (e.points.length !== 1) return;
+      const hit = this.routeHit(e.point, 12);
+      if (!hit) return;
+      leg = hit.properties.leg as number;
+      from = e.point;
+      const p0 = at(e);
+      timer = window.setTimeout(() => {
+        m.dragPan.disable();
+        navigator.vibrate?.(12);
+        start(p0);
+      }, 350);
+    });
+    m.on("touchmove", (e) => {
+      if (!active) {
+        if (from && from.dist(e.point) > 10) {
+          clearTimeout(timer);
+          from = null;
+        }
+        return;
+      }
+      e.preventDefault();
+      move(at(e));
+    });
+    const touchEnd = () => {
+      clearTimeout(timer);
+      if (active) m.dragPan.enable();
+      finish();
+    };
+    m.on("touchend", touchEnd);
+    m.on("touchcancel", touchEnd);
   }
 
   get is3d() {
