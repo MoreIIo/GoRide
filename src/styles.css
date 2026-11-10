@@ -4767,3 +4767,10 @@ body.mobile .maplibregl-canvas-container,
 body.mobile .maplibregl-canvas {
   touch-action: none;
 }
+
+/* Appui long sur la carte (remodeler le tracé) : ni loupe, ni sélection, ni menu */
+body.mobile .maplibregl-canvas-container {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}

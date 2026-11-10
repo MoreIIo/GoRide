@@ -278,39 +278,70 @@ export class TrackMap {
       );
     });
 
-    // Doigt : appui long sur la ligne
-    m.on("touchstart", (e) => {
-      clearTimeout(timer);
-      if (e.points.length !== 1) return;
-      const hit = this.routeHit(e.point, 12);
-      if (!hit) return;
-      leg = hit.properties.leg as number;
-      from = e.point;
-      const p0 = at(e);
-      timer = window.setTimeout(() => {
-        m.dragPan.disable();
-        navigator.vibrate?.(12);
-        start(p0);
-      }, 350);
-    });
-    m.on("touchmove", (e) => {
-      if (!active) {
-        if (from && from.dist(e.point) > 10) {
-          clearTimeout(timer);
-          from = null;
+    // Doigt : appui long sur la ligne, puis glisser. Écouteurs natifs (non passifs) sur la
+    // zone de la carte : le téléphone ne doit ni défiler, ni ouvrir son menu d'appui long.
+    const box = m.getCanvasContainer();
+    const local = (t: Touch) => {
+      const r = box.getBoundingClientRect();
+      return new maplibregl.Point(t.clientX - r.left, t.clientY - r.top);
+    };
+    const lngLat = (pt: maplibregl.Point): [number, number] => {
+      const ll = m.unproject(pt);
+      return [ll.lng, ll.lat];
+    };
+    box.addEventListener(
+      "touchstart",
+      (ev) => {
+        clearTimeout(timer);
+        if (ev.touches.length !== 1) {
+          if (active) touchEnd();
+          return;
         }
-        return;
-      }
-      e.preventDefault();
-      move(at(e));
-    });
+        const pt = local(ev.touches[0]);
+        const hit = this.routeHit(pt, 14);
+        if (!hit) return;
+        leg = hit.properties.leg as number;
+        from = pt;
+        timer = window.setTimeout(() => {
+          if (!from) return;
+          m.stop();
+          m.dragPan.disable();
+          navigator.vibrate?.(15);
+          start(lngLat(from));
+        }, 300);
+      },
+      { passive: true },
+    );
+    box.addEventListener(
+      "touchmove",
+      (ev) => {
+        const t = ev.touches[0];
+        if (!t) return;
+        const pt = local(t);
+        if (!active) {
+          // Le doigt a bougé avant l'appui long : c'est un déplacement de carte
+          if (from && from.dist(pt) > 12) {
+            clearTimeout(timer);
+            from = null;
+          }
+          return;
+        }
+        ev.preventDefault();
+        move(lngLat(pt));
+      },
+      { passive: false },
+    );
     const touchEnd = () => {
       clearTimeout(timer);
       if (active) m.dragPan.enable();
       finish();
     };
-    m.on("touchend", touchEnd);
-    m.on("touchcancel", touchEnd);
+    box.addEventListener("touchend", touchEnd);
+    box.addEventListener("touchcancel", touchEnd);
+    // Appui long sur Android / iPhone : pas de menu contextuel ni de sélection
+    box.addEventListener("contextmenu", (ev) => {
+      if (document.body.classList.contains("mobile")) ev.preventDefault();
+    });
   }
 
   get is3d() {
