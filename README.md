@@ -77,6 +77,8 @@ Tu as déjà suivi un itinéraire « vélo de route » qui t'envoie sur un chemi
 
 ## 📥 Installation
 
+### 💻 Sur PC (Windows)
+
 1. Va sur la page **[Releases](https://github.com/MoreIIo/GoRide/releases/latest)**.
 2. Télécharge **`GoRide_x.y.z_x64-setup.exe`**.
 3. Lance-le et suis l'installation.
@@ -91,6 +93,19 @@ Tu as déjà suivi un itinéraire « vélo de route » qui t'envoie sur un chemi
 | Système | Windows 10 / 11, 64 bits | Windows 11 |
 | Disque | Quelques centaines de Mo par région | + ~5 Go pour le coach IA |
 | Coach IA (facultatif) | — | Carte graphique avec 8 Go de mémoire vidéo |
+
+### 📱 Sur téléphone Android
+
+1. Depuis ton téléphone, ouvre la page **[Releases](https://github.com/MoreIIo/GoRide/releases/latest)**.
+2. Télécharge **`GoRide_x.y.z_android.apk`** et ouvre-le.
+3. Android demande d'autoriser l'installation d'applis depuis ton navigateur : accepte, puis touche **Installer**.
+
+Sur téléphone, GoRide télécharge le **réseau routier tout prêt** de la région où tu traces (de 6 à 95 Mo selon la région, mis à jour chaque mois), sans rien calculer sur l'appareil. En plus des fonctions du PC :
+- **Ma position** : le bouton viseur centre la carte sur toi, et une boucle peut partir de là où tu es ;
+- **Partager** : les boutons GPX et Garmin envoient le parcours vers Garmin Connect, Drive, un e-mail… ;
+- **Importer** : tes sorties `.fit`, `.gpx` ou `.tcx` se choisissent dans l'appli Fichiers.
+
+Le coach IA, qui a besoin d'une carte graphique, reste pour l'instant sur PC. La version iPhone est prévue.
 
 > [!IMPORTANT]
 > La couverture routière concerne actuellement la **France métropolitaine**.
@@ -220,7 +235,10 @@ cargo run --release -p goride-core --example bench_loops -- data/bretagne-latest
 Le dossier `data/` sert aux fichiers locaux (extraits OSM, sorties de test) et n'est pas versionné.
 
 ### Publier une version
-Le workflow [`release.yml`](.github/workflows/release.yml) compile l'installateur sur GitHub et crée une release en brouillon à chaque tag `v*` :
+Le workflow [`release.yml`](.github/workflows/release.yml) compile l'installateur Windows et l'APK Android (via [`android.yml`](.github/workflows/android.yml)) sur GitHub, et crée une release en brouillon à chaque tag `v*`. La version vient de `src-tauri/tauri.conf.json` : pense à l'augmenter avant chaque tag, sinon Android refusera la mise à jour.
+
+L'APK est signé avec la clé de GoRide, rangée dans les secrets du dépôt (`ANDROID_KEYSTORE`, `ANDROID_KEYSTORE_PASSWORD`). Les réseaux routiers du téléphone sont fabriqués à part, chaque mois, par [`reseaux.yml`](.github/workflows/reseaux.yml) (release `reseaux-vN`).
+
 ```powershell
 git tag v0.1.0
 git push origin v0.1.0

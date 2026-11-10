@@ -2,7 +2,7 @@
 <html lang="fr">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="color-scheme" content="dark" />
     <title>GoRide</title>
     <!-- Thème choisi dans Options, appliqué avant le premier affichage (pas de flash) -->
@@ -142,6 +142,9 @@
         <button id="btn-north" class="dock-btn compass" title="Remettre le nord en haut">
           <svg id="compass-needle" viewBox="0 0 24 24"><path class="n" d="M12 3l3.2 9H8.8z" /><path class="s" d="M12 21l-3.2-9h6.4z" /></svg>
         </button>
+        <button id="btn-locate" class="dock-btn mobile-only" title="Ma position">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2" /><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3" /><circle cx="12" cy="12" r="7" /></svg>
+        </button>
         <span class="sep"></span>
         <button id="tg-hillshade" class="dock-btn on" aria-pressed="true" title="Ombrage du relief">
           <svg viewBox="0 0 24 24"><path d="M3 19 9.5 8l4 6.5L16 11l5 8z" /></svg>
@@ -220,6 +223,10 @@
           </button>
         </div>
         <p id="loop-hint" class="hint">Clique sur la carte pour choisir le départ.</p>
+        <button id="loop-here" class="btn ghost small full mobile-only">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2" /><circle cx="12" cy="12" r="7" /></svg>
+          Partir de ma position
+        </button>
         <div class="field">
           <span class="label">Distance</span>
           <span class="km-input"><input id="loop-km" type="number" min="5" max="300" step="5" value="50" /> km</span>

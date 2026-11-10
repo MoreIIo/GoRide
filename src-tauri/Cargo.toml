@@ -29,3 +29,10 @@ csv = "1"
 roxmltree = "0.20"
 # Téléchargement des régions OpenStreetMap (Geofabrik)
 ureq = "2"
+
+# Téléphone seulement : fichiers choisis dans l'appli Fichiers (adresses content://),
+# feuille de partage (Garmin Connect, Drive…), position GPS
+[target.'cfg(any(target_os = "android", target_os = "ios"))'.dependencies]
+tauri-plugin-fs = "2"
+tauri-plugin-sharekit = "0.3"
+tauri-plugin-geolocation = "2"

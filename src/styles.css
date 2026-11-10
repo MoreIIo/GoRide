@@ -4317,3 +4317,372 @@ body.mode-rides .coach-float {
   opacity: 0;
   transform: rotate(-90deg) scale(0.6);
 }
+
+
+/* ==========================================================================
+   Version téléphone (body.mobile, posé au démarrage sur Android / iPhone)
+   ========================================================================== */
+
+/* Le coach IA tourne avec Ollama sur un PC : il n'existe pas encore sur mobile. */
+body.mobile [data-mode="coach"],
+body.mobile #coach-float,
+body.mobile #ride-coach,
+/* « Préparer toute la France » : 4,6 Go et beaucoup de mémoire, pas pour un téléphone */
+body.mobile .nm-france {
+  display: none !important;
+}
+
+/* Encoches, caméra, barre d'état et barre de gestes : l'appli dessine sous ces zones,
+   on garde donc une marge. env() donne la vraie valeur ; le minimum couvre les WebView
+   Android qui ne la fournissent pas. */
+body.mobile {
+  --gap: 10px;
+  --bar-h: 46px;
+  --safe-t: max(env(safe-area-inset-top, 0px), 40px);
+  --safe-b: max(env(safe-area-inset-bottom, 0px), 18px);
+  --dock-w: 46px;
+  --rail: calc(var(--gap) + var(--dock-w) + 8px);
+  --basemaps-h: 34px;
+  /* barre du haut + rangée des fonds de carte */
+  --top: calc(var(--safe-t) + var(--bar-h) + 8px + var(--basemaps-h) + 10px);
+  --profile-h: 132px;
+  --chart-h: 160px;
+  /* Barre d'outils tout en bas ; profil et tiroirs s'empilent au-dessus */
+  --tb-h: 58px;
+  --base: calc(var(--safe-b) + var(--tb-h) + 8px);
+}
+body.mobile.mode-rides {
+  --base: var(--safe-b);
+}
+/* Le voile sombre des bords écrasait toute la carte sur un écran étroit */
+body.mobile .vignette {
+  background: linear-gradient(180deg, rgba(5, 5, 6, 0.45) 0%, rgba(5, 5, 6, 0) 14%);
+}
+
+/* --- Barre du haut : menus | recherche | réseau + options ----------------------------- */
+body.mobile .topbar {
+  top: var(--safe-t);
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  height: var(--bar-h);
+}
+body.mobile .nav {
+  flex: none;
+  height: var(--bar-h);
+  padding: 0 2px;
+}
+body.mobile .nav .brand,
+body.mobile .menu-btn .chev {
+  display: none;
+}
+body.mobile .menu-btn {
+  padding: 0 10px;
+}
+body.mobile .search {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
+  height: var(--bar-h);
+  margin: 0;
+  padding: 0 10px;
+  gap: 8px;
+}
+body.mobile .search input {
+  min-width: 0;
+  font-size: 16px; /* en dessous de 16 px, iOS zoome sur le champ */
+}
+/* Menus et fonds de carte se placent par rapport à la barre entière (pas en « fixed » :
+   l'animation d'ouverture de la barre les décalerait). */
+body.mobile .top-right {
+  position: static;
+  flex: none;
+  gap: 6px;
+}
+body.mobile .top-right .net,
+body.mobile .opt-btn {
+  width: var(--bar-h);
+  height: var(--bar-h);
+  padding: 0;
+  justify-content: center;
+}
+body.mobile #net-label {
+  display: none;
+}
+body.mobile .search-results {
+  left: 0;
+  right: 0;
+  width: auto;
+  max-height: 50vh;
+}
+body.mobile .net-menu,
+body.mobile .options-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  width: auto;
+  max-width: none;
+  max-height: calc(100vh - var(--safe-t) - var(--bar-h) - var(--safe-b) - 24px);
+  overflow-y: auto;
+}
+body.mobile .top-right .basemaps {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  height: var(--basemaps-h);
+}
+body.mobile .top-right .basemaps button {
+  padding: 0 12px;
+  font-size: 13px;
+}
+
+/* --- Dock de vue (2D/3D, zoom, nord, relief) : colonne fine à droite -------------------- */
+body.mobile .dock {
+  top: calc(var(--safe-t) + var(--bar-h) + 8px);
+  right: var(--gap);
+  width: var(--dock-w);
+  padding: 4px;
+}
+body.mobile .dock-btn {
+  width: 38px;
+  height: 38px;
+}
+
+/* --- Barre d'outils : toute la largeur, collée en bas ---------------------------------- */
+body.mobile .tooldock,
+body.mobile:not(.menu-closed):has(#stats:not(.hidden)) .tooldock,
+body.mobile:has(#loop-panel:not(.hidden)) .tooldock,
+body.mobile:has(#library-panel:not(.hidden)) .tooldock {
+  left: var(--gap);
+  right: var(--gap);
+  bottom: var(--safe-b);
+  width: auto;
+  max-width: none;
+  gap: 8px;
+}
+/* Consigne de tracé : le titre suffit (le détail parle de souris et de clic droit) */
+body.mobile #empty-text {
+  display: none;
+}
+body.mobile .toolbar {
+  width: 100%;
+  gap: 2px;
+  padding: 5px;
+}
+body.mobile .toolbar .tools {
+  display: contents;
+}
+body.mobile .toolbar .tools.hidden {
+  display: none;
+}
+body.mobile .toolbar > *,
+body.mobile .toolbar .tools > * {
+  flex: 1 1 0;
+  min-width: 0;
+}
+body.mobile .toolbar .btn,
+body.mobile .toolbar .icon-btn {
+  width: auto;
+  height: 46px;
+  padding: 0;
+  justify-content: center;
+}
+body.mobile .toolbar .tsep,
+body.mobile #btn-settings .chev {
+  display: none;
+}
+/* Réglages du tracé : panneau pleine largeur au-dessus de la barre */
+body.mobile .tooldock .settings {
+  width: 100%;
+  max-height: calc(100vh - var(--top) - var(--tb-h) - var(--safe-b) - 16px);
+  z-index: 8;
+}
+body.mobile .hint-bar {
+  max-width: 100%;
+}
+
+/* --- Profil altimétrique et courbes : bande au-dessus de la barre d'outils -------------- */
+body.mobile .profile {
+  bottom: var(--base);
+  width: calc(100% - 2 * var(--gap));
+}
+body.mobile .toast {
+  bottom: calc(var(--base) + var(--reserve) + 12px);
+  max-width: calc(100% - 2 * var(--gap));
+}
+/* L'échelle passe en haut à gauche, sous les fonds de carte : en bas, les tiroirs la cachent */
+body.mobile .maplibregl-ctrl-bottom-left {
+  top: calc(var(--safe-t) + var(--bar-h) + 8px + var(--basemaps-h) + 4px);
+  bottom: auto;
+}
+body.mobile .maplibregl-ctrl-bottom-right {
+  bottom: calc(var(--base) + var(--reserve) - 6px);
+}
+
+/* --- Tiroirs : les panneaux montent du bas de l'écran ---------------------------------- */
+body.mobile .stats,
+body.mobile .loop-panel,
+body.mobile .library-panel,
+body.mobile .rides-panel,
+body.mobile .ride-detail {
+  --peek: 92px;
+  top: auto;
+  left: var(--gap);
+  right: var(--gap);
+  width: auto;
+  bottom: calc(var(--base) + var(--reserve));
+  z-index: 7;
+  max-height: var(--peek);
+  overflow: hidden;
+  padding: 30px 16px 16px;
+  transition: max-height 0.35s var(--ease), bottom 0.35s var(--ease);
+  animation: sheet-in 0.4s var(--ease) backwards;
+}
+body.mobile .stats.expanded,
+body.mobile .loop-panel.expanded,
+body.mobile .library-panel.expanded,
+body.mobile .rides-panel.expanded,
+body.mobile .ride-detail.expanded {
+  max-height: calc(100% - var(--top) - var(--base) - var(--reserve));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+/* Poignée : un toucher dans la bande du haut plie ou déplie le tiroir */
+body.mobile .stats::before,
+body.mobile .loop-panel::before,
+body.mobile .library-panel::before,
+body.mobile .rides-panel::before,
+body.mobile .ride-detail::before {
+  content: "";
+  position: absolute;
+  top: 11px;
+  left: 50%;
+  width: 40px;
+  height: 4px;
+  margin-left: -20px;
+  border-radius: 2px;
+  background: var(--line-2);
+}
+body.mobile .card h2 {
+  white-space: normal;
+}
+body.mobile .rides-panel {
+  --peek: 96px;
+}
+/* Une sortie ouverte remplace la liste ; « Mes sorties » ramène à la liste */
+body.mobile:has(#ride-detail:not(.hidden)) #rides-panel {
+  display: none;
+}
+body.mobile .ride-detail {
+  --peek: 150px;
+  padding-top: 26px;
+}
+body.mobile .ride-back {
+  margin: 0 0 10px -6px;
+  padding: 0 10px 0 4px;
+  border-color: transparent;
+}
+body.mobile .ride-back svg {
+  width: 16px;
+  height: 16px;
+}
+/* La progression s'affiche en plein écran sous la barre du haut */
+body.mobile .progress-panel {
+  top: var(--top);
+  left: var(--gap);
+  right: var(--gap);
+  bottom: var(--safe-b);
+  z-index: 8;
+  padding: 18px 16px;
+}
+
+/* Itinéraire replié : titre puis distance, dénivelé et temps sur une ligne */
+body.mobile .stats {
+  --peek: 126px;
+  display: flex;
+  flex-direction: column;
+}
+body.mobile .stats > .eyebrow {
+  display: none;
+}
+body.mobile .stats > h2 {
+  order: 1;
+  margin-bottom: 10px;
+  font-size: 17px;
+}
+body.mobile .stats > dl {
+  order: 2;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px 10px;
+}
+body.mobile .stats > .save-btn {
+  order: 3;
+  flex: none;
+  margin-bottom: 14px;
+}
+body.mobile .stats > :not(h2, dl, .save-btn, .eyebrow) {
+  order: 4;
+}
+body.mobile .stats dl > div,
+body.mobile .stats dl > .hero,
+body.mobile .stats dl > div:last-child {
+  grid-column: auto;
+  padding: 0;
+  border: 0;
+}
+body.mobile .stats dl > .hero {
+  order: 1;
+}
+body.mobile .stats dl > div:nth-child(2) {
+  order: 2;
+}
+body.mobile .stats dl > div:last-child {
+  order: 3;
+}
+body.mobile .stats dl > div:nth-child(3),
+body.mobile .stats dl > div:nth-child(4) {
+  order: 4;
+}
+body.mobile .stats dd,
+body.mobile .stats .hero dd {
+  font-size: 20px;
+  white-space: nowrap;
+}
+body.mobile .stats dt {
+  white-space: nowrap;
+}
+body.mobile .stats > dl {
+  grid-template-columns: 1.1fr 0.9fr 1.1fr;
+}
+body.mobile .stats dt input {
+  width: 34px;
+  padding: 1px 3px;
+}
+
+/* Boutons réservés au téléphone (position GPS…) */
+body:not(.mobile) .mobile-only {
+  display: none !important;
+}
+/* Pas de dossier ni d'Explorateur sur téléphone : les itinéraires vivent dans l'appli */
+body.mobile .lib-foot,
+body.mobile #imp-folder,
+body.mobile #nm-file {
+  display: none !important;
+}
+#loop-here svg {
+  width: 16px;
+  height: 16px;
+}
+/* Ma position : point bleu à halo */
+.me-dot {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--blue);
+  border: 3px solid #fff;
+  box-shadow: 0 0 0 6px rgba(62, 139, 255, 0.25), 0 1px 4px rgba(0, 0, 0, 0.5);
+}
+body.mobile #import-menu .hint {
+  display: none;
+}

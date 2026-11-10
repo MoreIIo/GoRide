@@ -1,4 +1,4 @@
-# Fabrique l'installateur Windows et le publie dans une « Release » GitHub.
+# Fabrique l'installateur Windows et l'appli Android (APK), et les publie dans une « Release » GitHub.
 # Pour publier une version : pousser un tag, par ex.
 #   git tag v0.1.0
 #   git push origin v0.1.0
@@ -16,6 +16,8 @@ permissions:
 jobs:
   windows:
     runs-on: windows-latest
+    outputs:
+      release_id: ${{ steps.tauri.outputs.releaseId }}
     steps:
       - uses: actions/checkout@v4
 
@@ -31,14 +33,24 @@ jobs:
       - run: npm ci
 
       - uses: tauri-apps/tauri-action@v0
+        id: tauri
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: GoRide ${{ github.ref_name }}
           releaseBody: |
-            Installateur Windows de GoRide.
-            Télécharger le fichier `GoRide_..._x64-setup.exe` ci-dessous et le lancer.
+            **PC (Windows)** : télécharger `GoRide_..._x64-setup.exe` ci-dessous et le lancer.
             Windows peut afficher « Windows a protégé votre ordinateur » (application non signée) : « Informations complémentaires » → « Exécuter quand même ».
+
+            **Téléphone Android** : télécharger `GoRide_..._android.apk` depuis le téléphone et l'ouvrir.
+            Android demande d'autoriser l'installation d'applis depuis le navigateur : accepter, puis « Installer ».
           releaseDraft: true
           prerelease: false
+
+  android:
+    needs: windows
+    uses: ./.github/workflows/android.yml
+    with:
+      release_id: ${{ needs.windows.outputs.release_id }}
+    secrets: inherit

@@ -1,0 +1,13 @@
+{
+  "$schema": "../gen/schemas/mobile-schema.json",
+  "identifier": "mobile",
+  "description": "Droits propres au téléphone : position GPS et partage de fichiers",
+  "platforms": ["android", "iOS"],
+  "windows": ["main"],
+  "permissions": [
+    "geolocation:allow-check-permissions",
+    "geolocation:allow-request-permissions",
+    "geolocation:allow-get-current-position",
+    "sharekit:allow-share-file"
+  ]
+}

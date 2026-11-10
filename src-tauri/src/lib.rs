@@ -18,7 +18,7 @@ use routes::{RouteMeta, SavedRoute, SavedRouteSummary};
 use goride_core::graph::elevation::compute_elevation;
 use goride_core::graph::pbf::{graph_from_pbfs, BuildStep};
 use regions::Regions;
-use goride_core::graph::Graph;
+use goride_core::graph::{merge_graphs, Graph, FORMAT_VERSION};
 use goride_core::loops::{propose_loops, LoopProposal, LoopRequest};
 use goride_core::osm_tags::{RoadClass, Surface};
 use goride_core::route_track::{summarize, RouteSummary};
@@ -218,7 +218,13 @@ fn write_settings(st: &AppState, s: &serde_json::Map<String, serde_json::Value>)
 
 /// Dossier des itinéraires, s'il a déjà été choisi.
 fn routes_dir(st: &AppState) -> Option<PathBuf> {
-    read_settings(st).get("routesDir").and_then(|v| v.as_str()).filter(|s| !s.is_empty()).map(PathBuf::from)
+    read_settings(st)
+        .get("routesDir")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(PathBuf::from)
+        // Téléphone : pas de dossier à choisir, les itinéraires vivent dans les données de l'appli
+        .or_else(|| cfg!(mobile).then(|| st.settings_path.with_file_name("itineraires")))
 }
 
 fn routes_dir_or_err(st: &AppState) -> Result<PathBuf, String> {
@@ -229,7 +235,20 @@ fn routes_dir_or_err(st: &AppState) -> Result<PathBuf, String> {
 
 /// Lit un fichier GPX sur le disque et renvoie la trace calculée.
 #[tauri::command]
-async fn load_track(path: String) -> Result<Track, String> {
+async fn load_track(app: AppHandle, path: String) -> Result<Track, String> {
+    // Téléphone : fichier choisi dans l'appli Fichiers (adresse content://, sans extension)
+    #[cfg(mobile)]
+    if !Path::new(&path).is_file() {
+        use std::str::FromStr;
+        use tauri_plugin_fs::{FilePath, FsExt};
+        let fp = FilePath::from_str(&path).unwrap_or_else(|e| match e {});
+        let bytes = app.fs().read(fp).map_err(|e| format!("Impossible de lire le fichier : {e}"))?;
+        if sniff_activity(&bytes) != Some("gpx") {
+            return Err("Ce fichier n'est pas une trace GPX.".into());
+        }
+        return goride_core::parse_gpx(&bytes).map_err(|e| e.to_string());
+    }
+    let _ = &app;
     let path = PathBuf::from(path);
     let ext = path.extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase).unwrap_or_default();
     if ext != "gpx" {
@@ -342,6 +361,8 @@ fn with_library<T>(st: &AppState, f: impl FnOnce(&mut Library) -> Result<T, Stri
 #[tauri::command]
 async fn import_activities(app: AppHandle, paths: Vec<String>, folder: Option<String>) -> Result<ImportReport, String> {
     tauri::async_runtime::spawn_blocking(move || {
+        #[cfg(mobile)]
+        let paths = stage_picked_files(&app, paths)?;
         let st = app.state::<AppState>();
         let progress = |done: usize, total: usize| {
             if total > 3 && (done % 5 == 0 || done == total) {
@@ -355,6 +376,64 @@ async fn import_activities(app: AppHandle, paths: Vec<String>, folder: Option<St
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+/// Format d'un fichier de sortie d'après son contenu (sur téléphone, un fichier choisi
+/// n'arrive qu'avec une adresse content://, sans nom ni extension).
+#[cfg(any(mobile, test))]
+fn sniff_activity(bytes: &[u8]) -> Option<&'static str> {
+    if bytes.len() > 12 && &bytes[8..12] == b".FIT" {
+        return Some("fit");
+    }
+    if bytes.starts_with(&[0x1f, 0x8b]) {
+        return Some("gz");
+    }
+    let head = String::from_utf8_lossy(&bytes[..bytes.len().min(4096)]);
+    if head.contains("<gpx") {
+        Some("gpx")
+    } else if head.contains("TrainingCenterDatabase") {
+        Some("tcx")
+    } else {
+        None
+    }
+}
+
+/// Téléphone : les fichiers choisis dans l'appli Fichiers sont copiés dans le cache de
+/// GoRide, avec la bonne extension, avant l'import habituel.
+#[cfg(mobile)]
+fn stage_picked_files(app: &AppHandle, paths: Vec<String>) -> Result<Vec<String>, String> {
+    use std::io::Read;
+    use std::str::FromStr;
+    use tauri_plugin_fs::{FilePath, FsExt};
+    let dir = app.path().app_cache_dir().map_err(|e| e.to_string())?.join("import");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let mut out = Vec::with_capacity(paths.len());
+    for (k, p) in paths.into_iter().enumerate() {
+        if Path::new(&p).is_file() {
+            out.push(p);
+            continue;
+        }
+        let fp = FilePath::from_str(&p).unwrap_or_else(|e| match e {});
+        let mut bytes = app.fs().read(fp).map_err(|e| format!("Lecture du fichier impossible : {e}"))?;
+        let mut kind = sniff_activity(&bytes);
+        if kind == Some("gz") {
+            let mut raw = Vec::new();
+            flate2::read::GzDecoder::new(&bytes[..])
+                .take(200 << 20)
+                .read_to_end(&mut raw)
+                .map_err(|e| format!("Décompression impossible : {e}"))?;
+            bytes = raw;
+            kind = sniff_activity(&bytes).filter(|k| *k != "gz");
+        }
+        let Some(ext) = kind else {
+            return Err("Fichier non reconnu : choisis des sorties au format .fit, .gpx ou .tcx.".into());
+        };
+        let file = dir.join(format!("sortie-{}.{ext}", k + 1));
+        std::fs::write(&file, bytes).map_err(|e| e.to_string())?;
+        out.push(file.to_string_lossy().into_owned());
+    }
+    Ok(out)
 }
 
 /// Progression : forme, fatigue, semaines, vitesse sur le plat.
@@ -474,6 +553,134 @@ fn local_pbf(st: &AppState, slug: &str) -> Option<PathBuf> {
 }
 
 /// Extraits OSM de ces régions : ceux déjà sur le disque, les autres téléchargés un à un.
+/// Ce que coûte une région avant de pouvoir tracer dedans. Sur téléphone : le réseau prêt
+/// à l'emploi (compressé, environ six fois plus léger que l'extrait OpenStreetMap).
+fn region_info(st: &AppState, d: &'static regions::RegionDef) -> RegionInfo {
+    if cfg!(mobile) {
+        RegionInfo { slug: d.slug, name: d.name, size_mb: d.size_mb.div_ceil(6), downloaded: st.graphs_dir.join(format!("{}.graph", d.slug)).exists() }
+    } else {
+        RegionInfo { slug: d.slug, name: d.name, size_mb: d.size_mb, downloaded: local_pbf(st, d.slug).is_some() }
+    }
+}
+
+/// Réseaux prêts à l'emploi, un par région, fabriqués et publiés chaque mois sur GitHub
+/// par `.github/workflows/reseaux.yml`. Le numéro suit le format du graphe : une version
+/// de GoRide ne télécharge que des réseaux qu'elle sait lire.
+fn prebuilt_url(slug: &str) -> String {
+    format!("https://github.com/MoreIIo/GoRide/releases/download/reseaux-v{FORMAT_VERSION}/{slug}.graph.gz")
+}
+
+/// Téléphone : récupère le réseau de chaque région (en cache, sinon téléchargé tout prêt).
+/// Rien à construire : pas d'extrait OpenStreetMap ni de relief à calculer sur l'appareil.
+fn fetch_prebuilt(app: &AppHandle, defs: &[&'static regions::RegionDef]) -> Result<Vec<Graph>, String> {
+    use std::io::{Read, Write};
+    let st = app.state::<AppState>();
+    let emit = |msg: String| {
+        let _ = app.emit("network-progress", msg);
+    };
+    std::fs::create_dir_all(&st.graphs_dir).map_err(|e| e.to_string())?;
+    let agent = ureq::AgentBuilder::new()
+        .timeout_connect(std::time::Duration::from_secs(20))
+        .timeout_read(std::time::Duration::from_secs(60))
+        .user_agent("GoRide (planificateur d'itinéraires vélo)")
+        .build();
+    let n = defs.len();
+    let mut out = Vec::with_capacity(n);
+    for (i, d) in defs.iter().enumerate() {
+        let step = if n > 1 { format!(" ({}/{n})", i + 1) } else { String::new() };
+        let path = st.graphs_dir.join(format!("{}.graph", d.slug));
+        if path.exists() {
+            emit(format!("Chargement {}{step}…", d.name));
+            match Graph::load(&path) {
+                Ok(g) => {
+                    out.push(g);
+                    continue;
+                }
+                Err(e) => eprintln!("Réseau {path:?} inutilisable, nouveau téléchargement : {e}"),
+            }
+        }
+        emit(format!("Téléchargement {}{step}…", d.name));
+        let resp = agent.get(&prebuilt_url(d.slug)).call().map_err(|e| match e {
+            ureq::Error::Status(404, _) => format!("Le réseau {} n'est pas encore publié pour cette version de GoRide.", d.name),
+            e => format!("Téléchargement de {} impossible : {e}", d.name),
+        })?;
+        let total = resp.header("Content-Length").and_then(|v| v.parse::<u64>().ok());
+
+        // Octets reçus (compressés) comptés au passage, pour la barre de progression
+        struct Counting<'a, R: Read, F: Fn(u64)> {
+            inner: R,
+            done: u64,
+            last: u64,
+            cancel: &'a AtomicBool,
+            report: F,
+        }
+        impl<R: Read, F: Fn(u64)> Read for Counting<'_, R, F> {
+            fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+                if self.cancel.load(Ordering::Relaxed) {
+                    return Err(std::io::Error::other("Téléchargement annulé."));
+                }
+                let k = self.inner.read(buf)?;
+                self.done += k as u64;
+                if self.done - self.last >= 1 << 20 {
+                    self.last = self.done;
+                    (self.report)(self.done);
+                }
+                Ok(k)
+            }
+        }
+        let mb = |b: u64| b / 1_000_000;
+        let reader = Counting {
+            inner: resp.into_reader(),
+            done: 0,
+            last: 0,
+            cancel: &st.cancel_download,
+            report: |done: u64| {
+                emit(match total {
+                    Some(t) => format!("Téléchargement {}{step} : {} / {} Mo", d.name, mb(done), mb(t)),
+                    None => format!("Téléchargement {}{step} : {} Mo", d.name, mb(done)),
+                })
+            },
+        };
+        // Décompressé à la volée et gardé tel quel : il se rechargera vite la fois suivante.
+        let part = path.with_extension("graph.part");
+        let result: Result<(), String> = (|| {
+            let mut gz = flate2::read::GzDecoder::new(reader);
+            let mut file = std::io::BufWriter::new(std::fs::File::create(&part).map_err(|e| e.to_string())?);
+            std::io::copy(&mut gz, &mut file).map_err(|e| format!("Téléchargement de {} interrompu : {e}", d.name))?;
+            file.flush().map_err(|e| e.to_string())
+        })();
+        if let Err(e) = result {
+            let _ = std::fs::remove_file(&part);
+            return Err(e);
+        }
+        std::fs::rename(&part, &path).map_err(|e| e.to_string())?;
+        emit(format!("Chargement {}{step}…", d.name));
+        out.push(Graph::load(&path).map_err(|e| format!("Réseau {} illisible : {e}", d.name))?);
+    }
+    Ok(out)
+}
+
+/// Téléphone : réseau des régions demandées, assemblé si elles sont plusieurs, puis activé.
+fn load_prebuilt(app: &AppHandle, defs: &[&'static regions::RegionDef], key: &str) -> Result<(), String> {
+    let st = app.state::<AppState>();
+    let parts = fetch_prebuilt(app, defs)?;
+    let single = parts.len() == 1;
+    if !single {
+        let _ = app.emit("network-progress", "Assemblage des régions…".to_string());
+    }
+    let graph = merge_graphs(parts);
+    let out = st.graphs_dir.join(format!("{key}.graph"));
+    if !single {
+        // L'assemblage est gardé : au prochain démarrage, il se recharge directement.
+        graph.save(&out).map_err(|e| format!("Enregistrement du réseau impossible : {e}"))?;
+    }
+    let _ = app.emit("network-progress", "Préparation de l'index…".to_string());
+    activate(app, graph, key);
+    // Chaque réseau pèse plusieurs dizaines de Mo : on garde les six plus récents
+    regions::prune_graphs(&st.graphs_dir, 6, &out);
+    Ok(())
+}
+
 fn fetch_pbfs(app: &AppHandle, defs: &[&'static regions::RegionDef]) -> Result<Vec<PathBuf>, String> {
     let st = app.state::<AppState>();
     let emit = |msg: String| {
@@ -535,11 +742,7 @@ async fn coverage_for(app: AppHandle, points: Vec<[f64; 2]>, keep: Vec<[f64; 2]>
         }
         let needed = regions::needed_regions(&polys, &points, &keep);
         let key = regions::key_of(&needed);
-        let regions = needed
-            .iter()
-            .filter_map(|s| regions::def(s))
-            .map(|d| RegionInfo { slug: d.slug, name: d.name, size_mb: d.size_mb, downloaded: local_pbf(&st, d.slug).is_some() })
-            .collect();
+        let regions = needed.iter().filter_map(|s| regions::def(s)).map(|d| region_info(&st, d)).collect();
         Ok(Coverage {
             covered: false,
             regions,
@@ -592,6 +795,9 @@ async fn load_regions(app: AppHandle, slugs: Vec<String>) -> Result<NetworkStatu
                 Err(e) => eprintln!("Réseau en cache {cached:?} inutilisable : {e}"),
             }
         }
+        if cfg!(mobile) {
+            return load_prebuilt(&app2, &defs, &key);
+        }
         let pbfs = fetch_pbfs(&app2, &defs)?;
         if key == regions::FRANCE_KEY {
             // Construire la France demande beaucoup de mémoire : on libère d'abord le réseau actuel
@@ -626,10 +832,7 @@ struct RegionsOverview {
 /// État des régions : déjà téléchargées ou non, réseau France prêt ou actif.
 #[tauri::command]
 fn regions_overview(st: State<'_, AppState>) -> RegionsOverview {
-    let regions: Vec<RegionInfo> = regions::CATALOG
-        .iter()
-        .map(|d| RegionInfo { slug: d.slug, name: d.name, size_mb: d.size_mb, downloaded: local_pbf(&st, d.slug).is_some() })
-        .collect();
+    let regions: Vec<RegionInfo> = regions::CATALOG.iter().map(|d| region_info(&st, d)).collect();
     RegionsOverview {
         total_mb: regions.iter().map(|r| r.size_mb).sum(),
         downloaded_mb: regions.iter().filter(|r| r.downloaded).map(|r| r.size_mb).sum(),
@@ -1133,12 +1336,29 @@ mod tests {
         assert_eq!(super::network_display("ile-de-france-latest"), "Ile-de-france");
         assert_eq!(super::network_display("mon_extrait"), "Mon-extrait");
     }
+
+    #[test]
+    fn activity_files_recognized_by_content() {
+        let mut fit = vec![14u8, 0x10, 0, 0, 0, 0, 0, 0];
+        fit.extend_from_slice(b".FIT\0\0");
+        assert_eq!(super::sniff_activity(&fit), Some("fit"));
+        assert_eq!(super::sniff_activity(b"<?xml version=\"1.0\"?><gpx version=\"1.1\">"), Some("gpx"));
+        assert_eq!(super::sniff_activity(b"<?xml?><TrainingCenterDatabase>"), Some("tcx"));
+        assert_eq!(super::sniff_activity(&[0x1f, 0x8b, 8, 0]), Some("gz"));
+        assert_eq!(super::sniff_activity(b"bonjour"), None);
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
-        .plugin(tauri_plugin_dialog::init())
+    let builder = tauri::Builder::default().plugin(tauri_plugin_dialog::init());
+    // Téléphone : fichiers de l'appli Fichiers, partage, position GPS
+    #[cfg(mobile)]
+    let builder = builder
+        .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_sharekit::init())
+        .plugin(tauri_plugin_geolocation::init());
+    builder
         .setup(|app| {
             let data = app.path().app_data_dir()?;
             let cache = app.path().app_cache_dir()?;
@@ -1196,6 +1416,12 @@ pub fn run() {
                                 if let Err(e) = build_and_activate(&handle, &pbfs, &graph_key(&path)) {
                                     eprintln!("Reconstruction impossible : {e}");
                                 }
+                            }
+                            None if cfg!(mobile) => {
+                                // Téléphone : réseau d'une ancienne version, on le retélécharge à la demande
+                                let _ = std::fs::remove_file(&path);
+                                *handle.state::<AppState>().notice.lock().unwrap() =
+                                    Some("Le réseau routier a été mis à jour : touche la carte pour le télécharger à nouveau.".into());
                             }
                             None => {
                                 *handle.state::<AppState>().notice.lock().unwrap() = Some(format!(

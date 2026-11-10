@@ -334,3 +334,27 @@ fn hills_slider_with_noisy_terrain() {
     assert!(!goes_north(&with(RouteOptions { hills: -1.0, ..road() })), "le plus plat : par le sud");
     assert!(goes_north(&with(RouteOptions { hills: 1.0, ..road() })), "les bosses : par la colline");
 }
+
+/// Deux régions voisines qui partagent des routes frontalières : une fois assemblées,
+/// on passe de l'une à l'autre, et les routes communes ne comptent qu'une fois.
+#[test]
+fn merged_regions_are_connected() {
+    use goride_core::graph::merge_graphs;
+    use goride_core::osm_tags::classify;
+    let info = || classify(|k| (k == "highway").then_some("tertiary")).unwrap();
+    let pos = |id: i64| Some([-1.70 + id as f64 * 0.002, 48.10 + (id % 3) as f64 * 0.001]);
+    // Une route en 98 bouts : l'ouest a les bouts 1→60, l'est 40→99 (40→60 dans les deux)
+    let ways = |a: i64, b: i64| -> Vec<RawWay> { (a..b).map(|i| RawWay { nodes: vec![i, i + 1], info: info() }).collect() };
+    let west = build_graph(&ways(1, 60), pos);
+    let east = build_graph(&ways(40, 99), pos);
+    assert_eq!((west.seg_count(), east.seg_count()), (59, 59));
+    let merged = merge_graphs(vec![west, east]);
+    assert_eq!(merged.seg_count(), 98, "les bouts frontaliers ne sont gardés qu'une fois");
+    assert_eq!(merged.node_count(), 99);
+    // D'un bout à l'autre : un seul réseau continu
+    let r = Router::new(merged);
+    let a = r.snap([-1.70 + 2.0 * 0.002, 48.10 + 0.002], &road()).unwrap();
+    let b = r.snap([-1.70 + 98.0 * 0.002, 48.10 + 0.002], &road()).unwrap();
+    let leg = r.route(&a, &b, &road()).expect("passage d'une région à l'autre");
+    assert!(leg.length_m > 10_000.0);
+}
