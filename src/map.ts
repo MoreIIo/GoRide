@@ -14,6 +14,57 @@ const CASING = "#0b0b0d";
 export const LOOP_COLORS = ["#fc4c02", "#3e8bff", "#2bb673", "#a66bff", "#f0b429", "#ff5c8a", "#19c3c3", "#c8b08a"];
 const EMPTY: FeatureCollection = { type: "FeatureCollection", features: [] };
 
+/**
+ * Flèche de sens de parcours (chevron blanc cerné de sombre), dessinée une fois.
+ * Elle pointe vers la droite : posée le long d'une ligne, MapLibre l'oriente dans le sens
+ * des coordonnées, donc du départ vers l'arrivée.
+ */
+function arrowImage(): { width: number; height: number; data: Uint8Array } {
+  const size = 40; // affichée à 20 px (pixelRatio 2)
+  const c = document.createElement("canvas");
+  c.width = c.height = size;
+  const g = c.getContext("2d")!;
+  g.lineCap = "round";
+  g.lineJoin = "round";
+  const chevron = () => {
+    g.beginPath();
+    g.moveTo(14, 9);
+    g.lineTo(26, 20);
+    g.lineTo(14, 31);
+    g.stroke();
+  };
+  g.strokeStyle = "rgba(11, 11, 13, 0.85)";
+  g.lineWidth = 11;
+  chevron();
+  g.strokeStyle = "#ffffff";
+  g.lineWidth = 5.5;
+  chevron();
+  const img = g.getImageData(0, 0, size, size);
+  return { width: size, height: size, data: new Uint8Array(img.data.buffer) };
+}
+
+/** Couche de flèches de sens le long des lignes d'une source. */
+function arrowLayer(id: string, source: string, filter?: maplibregl.FilterSpecification): maplibregl.SymbolLayerSpecification {
+  return {
+    id,
+    type: "symbol",
+    source,
+    minzoom: 9,
+    ...(filter ? { filter } : {}),
+    layout: {
+      "symbol-placement": "line",
+      "symbol-spacing": ["interpolate", ["linear"], ["zoom"], 9, 70, 16, 120],
+      "icon-image": "dir-arrow",
+      "icon-size": ["interpolate", ["linear"], ["zoom"], 9, 0.75, 16, 1.3],
+      "icon-rotation-alignment": "map",
+      "icon-pitch-alignment": "map",
+      "icon-keep-upright": false,
+      "icon-allow-overlap": true,
+      "icon-ignore-placement": true,
+    },
+  };
+}
+
 /** Point de départ de la caméra après l'ouverture. */
 const HOME: [number, number] = [-1.68, 48.11]; // Rennes
 const HOME_ZOOM = 10.6;
@@ -48,6 +99,7 @@ export class TrackMap {
   private markers: maplibregl.Marker[] = [];
   private hoverFrame = 0;
   private routeData: FeatureCollection = EMPTY;
+  private routePath: FeatureCollection = EMPTY;
   /** Mode tracé : un clic sur la carte ajoute un point, un clic sur le tracé en insère un. */
   drawing = false;
   onMapClick: ((p: [number, number]) => void) | null = null;
@@ -182,6 +234,15 @@ export class TrackMap {
     });
     this.routeData = { type: "FeatureCollection", features };
     this.map.getSource<GeoJSONSource>("route")?.setData(this.routeData);
+    // Tracé d'un seul tenant pour les flèches de sens (régulières d'une étape à l'autre)
+    const path: [number, number][] = [];
+    for (const leg of legs) for (const c of leg.coords) {
+      const last = path[path.length - 1];
+      if (!last || last[0] !== c[0] || last[1] !== c[1]) path.push(c as [number, number]);
+    }
+    this.routePath =
+      path.length > 1 ? { type: "FeatureCollection", features: [{ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: path } }] } : EMPTY;
+    this.map.getSource<GeoJSONSource>("route-path")?.setData(this.routePath);
     this.updateBuildings();
   }
 
@@ -456,6 +517,7 @@ export class TrackMap {
     );
 
     const width = (a: number, b: number) => ["interpolate", ["linear"], ["zoom"], 8, a, 16, b] as maplibregl.ExpressionSpecification;
+    if (!m.hasImage("dir-arrow")) m.addImage("dir-arrow", arrowImage(), { pixelRatio: 2 });
 
     // Trace importée : halo lumineux, liseré sombre, ligne orange
     m.addSource("track", { type: "geojson", data: EMPTY, tolerance: 0.2 });
@@ -480,6 +542,7 @@ export class TrackMap {
       layout: { "line-cap": "round", "line-join": "round" },
       paint: { "line-color": ACCENT, "line-width": width(3, 6.5) },
     });
+    m.addLayer(arrowLayer("track-arrows", "track"));
 
     // Itinéraire tracé : orange plein, pointillés clairs par-dessus là où le goudron n'est que présumé.
     m.addSource("route", { type: "geojson", data: this.routeData, tolerance: 0.2 });
@@ -519,6 +582,9 @@ export class TrackMap {
         "line-dasharray": [2, 2.5],
       },
     });
+    // Sens de parcours : il donne tout son sens à « Inverser »
+    m.addSource("route-path", { type: "geojson", data: this.routePath, tolerance: 0.3 });
+    m.addLayer(arrowLayer("route-arrows", "route-path"));
 
     // Boucles proposées
     m.addSource("loops", { type: "geojson", data: this.loopData, tolerance: 0.3 });
@@ -558,6 +624,7 @@ export class TrackMap {
         "line-opacity": ["case", ["==", ["get", "sel"], 1], 1, 0.4],
       },
     });
+    m.addLayer(arrowLayer("loops-arrows", "loops", ["==", ["get", "sel"], 1]));
 
     // Point courant (survol du profil ou de la trace)
     m.addSource("cursor", { type: "geojson", data: EMPTY });
