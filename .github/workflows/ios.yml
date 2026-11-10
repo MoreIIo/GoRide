@@ -1,0 +1,83 @@
+# Appli iPhone de GoRide : fichier .ipa NON signé, compilé sur un Mac de GitHub.
+#
+# Sans compte Apple Developer payant, l'appli s'installe avec Sideloadly (ou AltStore) depuis
+# un PC : l'outil la signe avec le compte Apple gratuit de la personne. Elle est alors valable
+# 7 jours, puis il faut la réinstaller (les données de l'appli sont conservées).
+#
+# - appelé par release.yml à chaque version (tag v…) : l'IPA rejoint les autres fichiers ;
+# - lançable à la main (onglet Actions) pour fabriquer une IPA d'essai.
+name: iPhone
+
+on:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      release_id:
+        description: "Release GitHub à compléter avec l'IPA"
+        type: string
+        default: ""
+  push:
+    branches: [iphone]
+    paths: [".github/workflows/ios.yml", "src-tauri/Info.ios.plist"]
+
+permissions:
+  contents: write
+
+jobs:
+  ipa:
+    runs-on: macos-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ios
+          workspaces: ". -> target"
+
+      - run: npm ci
+
+      - name: Projet Xcode
+        run: npm run tauri ios init -- --ci
+
+      - name: Icônes (même logo que sur PC)
+        run: npm run tauri icon -- src-tauri/icons/icon-mobile.svg --ios-color "#14181F"
+
+      - name: Compilation (iPhone, sans signature)
+        run: npm run tauri ios build -- --target aarch64 --no-sign --ci
+
+      - name: Nom du fichier
+        id: ipa
+        run: |
+          V=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          SRC=$(find src-tauri/gen/apple/build -name "*.ipa" | head -n 1)
+          test -n "$SRC" || { echo "Aucune IPA produite"; find src-tauri/gen/apple/build -maxdepth 4; exit 1; }
+          cp "$SRC" "GoRide_${V}_iphone.ipa"
+          echo "file=GoRide_${V}_iphone.ipa" >> "$GITHUB_OUTPUT"
+          ls -la GoRide_*.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.ipa.outputs.file }}
+          path: ${{ steps.ipa.outputs.file }}
+          compression-level: 0
+
+      - name: Ajout à la release
+        if: ${{ inputs.release_id != '' && inputs.release_id != null }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          curl -fsS -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary @"${{ steps.ipa.outputs.file }}" \
+            "https://uploads.github.com/repos/${{ github.repository }}/releases/${{ inputs.release_id }}/assets?name=${{ steps.ipa.outputs.file }}" > /dev/null

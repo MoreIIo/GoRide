@@ -1518,7 +1518,7 @@ async function myPosition(): Promise<[number, number] | null> {
     let perm = await invoke<Perm>("plugin:geolocation|check_permissions");
     if (perm.location !== "granted") perm = await invoke<Perm>("plugin:geolocation|request_permissions", { permissions: ["location"] });
     if (perm.location !== "granted") {
-      toast("GoRide n'a pas accès à ta position : autorise-la dans les réglages Android de l'appli.");
+      toast("GoRide n'a pas accès à ta position : autorise-la dans les réglages du téléphone (GoRide → Position).");
       return null;
     }
     toast("Recherche de ta position…", "ok", 0);

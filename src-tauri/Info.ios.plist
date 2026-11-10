@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Ajouts à l'Info.plist de l'appli iPhone (fusionnés par Tauri à la compilation) -->
+<plist version="1.0">
+<dict>
+  <key>NSLocationWhenInUseUsageDescription</key>
+  <string>GoRide utilise ta position pour centrer la carte sur toi et faire partir une boucle de là où tu es.</string>
+  <key>ITSAppUsesNonExemptEncryption</key>
+  <false/>
+</dict>
+</plist>
