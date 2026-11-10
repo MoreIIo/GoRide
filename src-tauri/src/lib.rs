@@ -676,8 +676,12 @@ fn load_prebuilt(app: &AppHandle, defs: &[&'static regions::RegionDef], key: &st
     }
     let _ = app.emit("network-progress", "Préparation de l'index…".to_string());
     activate(app, graph, key);
-    // Chaque réseau pèse plusieurs dizaines de Mo : on garde les six plus récents
-    regions::prune_graphs(&st.graphs_dir, 6, &out);
+    // Au prochain démarrage, c'est le réseau le plus récemment utilisé qui se recharge
+    if let Ok(f) = std::fs::File::options().write(true).open(&out) {
+        let _ = f.set_modified(std::time::SystemTime::now());
+    }
+    // Les régions téléchargées sont gardées ; seuls les assemblages anciens sont supprimés
+    regions::prune_merged(&st.graphs_dir, 2, &out);
     Ok(())
 }
 

@@ -18,7 +18,7 @@ on:
         default: ""
   push:
     branches: [iphone]
-    paths: [".github/workflows/ios.yml", "src-tauri/Info.ios.plist"]
+    paths: [".github/workflows/ios.yml", "src/**", "src-tauri/**", "crates/**", "index.html"]
 
 permissions:
   contents: write

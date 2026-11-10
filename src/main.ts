@@ -33,6 +33,9 @@ const inTauri = "__TAURI_INTERNALS__" in window;
 /** Version téléphone (Android / iPhone) : interface tactile, pas de coach IA (il a besoin d'Ollama sur un PC). */
 const isMobile = /Android|iPhone|iPad/i.test(navigator.userAgent);
 if (isMobile) document.body.classList.add("mobile");
+// iPhone : un pincement hors de la carte zoomait toute l'interface (la carte gère le sien).
+for (const ev of ["gesturestart", "gesturechange", "gestureend"])
+  document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
 
 /**
  * Sur téléphone, les panneaux deviennent des tiroirs qui montent du bas de l'écran.
@@ -1938,6 +1941,8 @@ let regionLoad: Promise<boolean> | null = null;
 async function ensureCoverage(points: [number, number][], keep: [number, number][]): Promise<boolean> {
   if (!inTauri || points.length === 0) return true;
   if (regionLoad) await regionLoad;
+  // Au démarrage, le dernier réseau se recharge tout seul : on l'attend au lieu d'en proposer un autre
+  for (let i = 0; network.busy && i < 600; i++) await new Promise((r) => setTimeout(r, 200));
   let c: Coverage;
   try {
     c = await invoke<Coverage>("coverage_for", { points, keep });
@@ -1952,8 +1957,9 @@ async function ensureCoverage(points: [number, number][], keep: [number, number]
     toast("Ce point est hors de France métropolitaine : aucun réseau routier disponible ici.");
     return false;
   }
-  if (!c.cached) {
-    const toGet = c.regions.filter((r) => !r.downloaded);
+  const toGet = c.regions.filter((r) => !r.downloaded);
+  // Téléphone : régions déjà gardées sur l'appareil, rien à télécharger → chargement direct
+  if (!c.cached && !(isMobile && toGet.length === 0)) {
     const mb = toGet.reduce((a, r) => a + r.sizeMb, 0);
     const lines = [`Pour tracer ici, GoRide doit charger le réseau routier : ${c.name}.`];
     if (isMobile) {
