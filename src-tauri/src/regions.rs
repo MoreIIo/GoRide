@@ -372,9 +372,46 @@ pub fn prune_graphs(graphs_dir: &Path, keep: usize, current: &Path) {
     }
 }
 
+/// Téléphone : seuls les assemblages de plusieurs régions (« bretagne+pays-de-la-loire ») sont
+/// supprimés au-delà de `keep`. Les régions téléchargées restent : sans elles, il faudrait les
+/// télécharger à nouveau, alors qu'un assemblage se refait en une seconde à partir d'elles.
+pub fn prune_merged(graphs_dir: &Path, keep: usize, current: &Path) {
+    let Ok(rd) = std::fs::read_dir(graphs_dir) else { return };
+    let mut merged: Vec<(std::time::SystemTime, PathBuf)> = rd
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|x| x == "graph") && p != current)
+        .filter(|p| p.file_stem().and_then(|s| s.to_str()).is_some_and(|s| s.contains('+')))
+        .filter_map(|p| std::fs::metadata(&p).and_then(|m| m.modified()).ok().map(|t| (t, p)))
+        .collect();
+    merged.sort_by(|a, b| b.0.cmp(&a.0));
+    for (_, p) in merged.into_iter().skip(keep) {
+        let _ = std::fs::remove_file(&p);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn prune_merged_keeps_downloaded_regions() {
+        let dir = std::env::temp_dir().join(format!("goride-prune-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let names = ["bretagne", "pays-de-la-loire", "alsace", "corse", "bretagne+pays-de-la-loire", "alsace+lorraine", "centre+limousin"];
+        for (i, n) in names.iter().enumerate() {
+            std::fs::write(dir.join(format!("{n}.graph")), b"x").unwrap();
+            // dates différentes : du plus ancien au plus récent
+            let t = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_000_000 + i as u64 * 60);
+            std::fs::File::options().write(true).open(dir.join(format!("{n}.graph"))).unwrap().set_modified(t).unwrap();
+        }
+        prune_merged(&dir, 1, &dir.join("bretagne.graph"));
+        let mut left: Vec<String> = std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
+        left.sort();
+        assert_eq!(left, ["alsace.graph", "bretagne.graph", "centre+limousin.graph", "corse.graph", "pays-de-la-loire.graph"]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     const SQUARE: &str = "test\n1\n   0.0E+00   0.0E+00\n   2.0E+00   0.0E+00\n   2.0E+00   2.0E+00\n   0.0E+00   2.0E+00\nEND\n!2\n 0.5 0.5\n 1.0 0.5\n 1.0 1.0\n 0.5 1.0\nEND\nEND\n";
 

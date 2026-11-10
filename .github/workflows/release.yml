@@ -1,4 +1,4 @@
-# Fabrique l'installateur Windows et l'appli Android (APK), et les publie dans une « Release » GitHub.
+# Fabrique l'installateur Windows, l'appli Android (APK) et l'appli iPhone (IPA), et les publie dans une « Release » GitHub.
 # Pour publier une version : pousser un tag, par ex.
 #   git tag v0.1.0
 #   git push origin v0.1.0
@@ -54,3 +54,9 @@ jobs:
     with:
       release_id: ${{ needs.windows.outputs.release_id }}
     secrets: inherit
+
+  iphone:
+    needs: windows
+    uses: ./.github/workflows/ios.yml
+    with:
+      release_id: ${{ needs.windows.outputs.release_id }}

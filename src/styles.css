@@ -4686,3 +4686,14 @@ body.mobile #nm-file {
 body.mobile #import-menu .hint {
   display: none;
 }
+
+/* Téléphone : ni zoom au pincement ni double-toucher sur l'interface ; la carte
+   (touch-action: none posé par MapLibre) garde ses propres gestes. */
+body.mobile,
+body.mobile * {
+  touch-action: pan-x pan-y;
+}
+body.mobile .maplibregl-canvas-container,
+body.mobile .maplibregl-canvas {
+  touch-action: none;
+}
