@@ -235,10 +235,31 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2" /><circle cx="12" cy="12" r="7" /></svg>
           Partir de ma position
         </button>
-        <div class="field">
+        <div class="segmented full" id="loop-by" role="radiogroup" aria-label="Boucle selon">
+          <button data-v="distance" class="active" role="radio">Distance</button>
+          <button data-v="duration" role="radio">Durée</button>
+        </div>
+        <div class="field" id="loop-field-km">
           <span class="label">Distance</span>
           <span class="km-input"><input id="loop-km" type="number" min="5" max="300" step="5" value="50" /> km</span>
         </div>
+        <div class="field hidden" id="loop-field-time">
+          <span class="label">Durée</span>
+          <span class="km-input time-input">
+            <input id="loop-h" type="number" min="0" max="14" step="1" value="3" aria-label="Heures" /> h
+            <select id="loop-min" aria-label="Minutes">
+              <option value="0">00</option>
+              <option value="15">15</option>
+              <option value="30">30</option>
+              <option value="45">45</option>
+            </select>
+          </span>
+        </div>
+        <div class="field hidden" id="loop-field-speed">
+          <span class="label">Moyenne sur le plat</span>
+          <span class="km-input"><input id="loop-speed" type="number" min="10" max="60" step="1" value="27" /> km/h</span>
+        </div>
+        <p id="loop-time-hint" class="hint small hidden">La durée tient compte du dénivelé : plus ça grimpe, plus la boucle est courte.</p>
         <div class="field">
           <span class="label">Direction</span>
           <select id="loop-dir">

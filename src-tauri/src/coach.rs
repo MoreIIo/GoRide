@@ -393,17 +393,18 @@ pub fn tools() -> Value {
     json!([
         f(
             "propose_loops",
-            "Calcule et affiche sur la carte plusieurs boucles qui reviennent au point de départ, d'une distance donnée. À utiliser dès qu'elle donne une distance sans destination différente du départ : « trace-moi un itinéraire de 20 km », « une boucle de 50 km depuis chez moi », « départ et retour au même endroit ».",
+            "Calcule et affiche sur la carte plusieurs boucles qui reviennent au point de départ, d'une distance ou d'une durée donnée. À utiliser dès qu'elle donne une distance ou une durée sans destination différente du départ : « trace-moi un itinéraire de 20 km », « une boucle de 50 km depuis chez moi », « une sortie de 3 h », « départ et retour au même endroit ». Donne distance_km OU duration_h, pas les deux.",
             json!({
                 "type": "object",
                 "properties": {
-                    "distance_km": { "type": "number", "description": "Distance de la boucle en km" },
+                    "distance_km": { "type": "number", "description": "Distance de la boucle en km (0 si elle donne une durée)" },
+                    "duration_h": { "type": "number", "description": "Durée de la boucle en heures (ex. 3 pour « 3 h », 2.5 pour « 2 h 30 ») ; 0 si elle donne une distance" },
                     "start": { "type": "string", "description": "Lieu ou adresse complète de départ en France, recopiée telle quelle (ex. « 1 place de la Mairie 35000 Rennes », « Bédoin »). Chaîne vide si non précisé ou « n'importe où »." },
                     "profile": profile_param(),
                     "hills": hills_param(),
                     "direction": { "type": "string", "enum": ["any", "north", "northeast", "east", "southeast", "south", "southwest", "west", "northwest"] }
                 },
-                "required": ["distance_km", "start", "profile"]
+                "required": ["start", "profile"]
             }),
         ),
         f(

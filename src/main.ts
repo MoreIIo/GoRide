@@ -365,6 +365,8 @@ interface LoopProposal {
   legs: Leg[];
   lengthM: number;
   ascentM: number;
+  /** Durée estimée (s), à la moyenne sur le plat demandée. */
+  estimatedS: number;
   retrace: number;
   /** Portion clé pour la séance (boucles de séance seulement). */
   key?: KeySection | null;
@@ -449,6 +451,51 @@ function loopKm(): number {
   return Number.isFinite(v) ? Math.min(300, Math.max(5, v)) : 50;
 }
 
+/** Boucle choisie par distance (« 50 km ») ou par durée (« 3 h »). */
+const LOOP_BY_KEY = "goride.loopBy";
+let loopBy: "distance" | "duration" = (() => {
+  try {
+    return localStorage.getItem(LOOP_BY_KEY) === "duration" ? "duration" : "distance";
+  } catch {
+    return "distance";
+  }
+})();
+
+function setLoopBy(v: "distance" | "duration") {
+  loopBy = v;
+  try {
+    localStorage.setItem(LOOP_BY_KEY, v);
+  } catch {
+    /* préférence non gardée : sans importance */
+  }
+  setSegmented("loop-by", v);
+  const byTime = v === "duration";
+  $("loop-field-km").classList.toggle("hidden", byTime);
+  $("loop-field-time").classList.toggle("hidden", !byTime);
+  $("loop-field-speed").classList.toggle("hidden", !byTime);
+  $("loop-time-hint").classList.toggle("hidden", !byTime);
+  loopShown = [];
+}
+
+/** Durée visée (heures), entre 15 min et 14 h. */
+function loopHours(): number {
+  const h = Number($<HTMLInputElement>("loop-h").value);
+  const min = Number($<HTMLSelectElement>("loop-min").value);
+  const t = (Number.isFinite(h) ? Math.floor(h) : 3) + (Number.isFinite(min) ? min : 0) / 60;
+  return Math.min(14, Math.max(0.25, t));
+}
+
+/** Moyenne sur le plat (km/h) pour estimer la durée des boucles. */
+function loopSpeed(): number {
+  const v = Number($<HTMLInputElement>("loop-speed").value);
+  return Number.isFinite(v) && v > 0 ? Math.min(60, Math.max(10, v)) : speed();
+}
+
+/** Ce que l'on vise, en clair : « 50 km » ou « 3 h 00 ». */
+function loopTargetLabel(): string {
+  return loopBy === "duration" ? duration(loopHours()) : `${loopKm()} km`;
+}
+
 /** Boucles pour une séance : bandeau en haut du panneau, distance conseillée. */
 function setLoopWorkout(w: { workout: Workout; info: WorkoutInfo } | null) {
   loopWorkout = w;
@@ -464,6 +511,8 @@ function setLoopWorkout(w: { workout: Workout; info: WorkoutInfo } | null) {
           ? `Une portion plate de ${effort} sans relance`
           : `${fmtDuration(w.info.totalS)} · ${TERRAIN_LABEL.any.toLowerCase()}`;
     $<HTMLInputElement>("loop-km").value = String(w.info.suggestedKm);
+    // La séance donne une distance conseillée : on repasse en distance
+    if (loopBy !== "distance") setLoopBy("distance");
   }
 }
 
@@ -494,9 +543,12 @@ async function requestLoops(more: boolean): Promise<string | null> {
   go.textContent = "Calcul des boucles…";
   try {
     const t0 = performance.now();
+    const byTime = loopBy === "duration" && !loopWorkout;
     const request = {
       start: loopStart,
-      distanceM: loopKm() * 1000,
+      distanceM: byTime ? 0 : loopKm() * 1000,
+      durationS: byTime ? Math.round(loopHours() * 3600) : null,
+      flatSpeedKmh: byTime ? loopSpeed() : speed(),
       tolerance: 0.05,
       count: 5,
       seed: loopSeed,
@@ -561,6 +613,7 @@ function renderLoopList() {
     .map((l, i) => {
       const parts = [km(l.lengthM)];
       if (network.elevation) parts.push(`D+ ≈ ${meters(Math.round(l.ascentM / 10) * 10)}`);
+      if (l.estimatedS > 0) parts.push(`≈ ${duration(Math.round(l.estimatedS / 300) / 12)}`);
       if (l.retrace > 0.03) parts.push(`${Math.round(l.retrace * 100)} % aller-retour`);
       return `<li class="loop-item${loopSelected === i ? " selected" : ""}" data-i="${i}">
         <span class="swatch" style="background:${LOOP_COLORS[i % LOOP_COLORS.length]}"></span>
@@ -580,7 +633,11 @@ function selectLoop(i: number) {
 function chooseLoop(i: number) {
   const l = loops[i];
   if (!l) return;
-  routeName = loopWorkout ? `${loopWorkout.workout.name} · ${Math.round(l.lengthM / 1000)} km` : `Boucle de ${Math.round(l.lengthM / 1000)} km`;
+  routeName = loopWorkout
+    ? `${loopWorkout.workout.name} · ${Math.round(l.lengthM / 1000)} km`
+    : loopBy === "duration"
+      ? `Boucle de ${duration(loopHours())} · ${Math.round(l.lengthM / 1000)} km`
+      : `Boucle de ${Math.round(l.lengthM / 1000)} km`;
   currentFile = null;
   savedSig = null;
   if (current?.kind === "import") {
@@ -610,6 +667,29 @@ $("loop-km").addEventListener("change", () => {
   loopShown = [];
 });
 $("loop-dir").addEventListener("change", () => (loopShown = []));
+$("loop-by").addEventListener("click", (e) => {
+  const v = (e.target as HTMLElement).closest("button")?.dataset.v;
+  if ((v === "distance" || v === "duration") && v !== loopBy) {
+    setLoopBy(v);
+    loops = [];
+    loopSelected = null;
+    showLoops();
+  }
+});
+$("loop-h").addEventListener("change", () => {
+  const h = loopHours();
+  $<HTMLInputElement>("loop-h").value = String(Math.floor(h));
+  $<HTMLSelectElement>("loop-min").value = String(Math.round((h % 1) * 60 / 15) * 15 % 60);
+  loopShown = [];
+});
+$("loop-min").addEventListener("change", () => (loopShown = []));
+$("loop-speed").addEventListener("change", () => {
+  $<HTMLInputElement>("loop-speed").value = String(Math.round(loopSpeed()));
+  loopShown = [];
+});
+// Au départ, la moyenne des boucles reprend celle du bilan de l'itinéraire
+$<HTMLInputElement>("loop-speed").value = String(Math.round(speed()));
+setLoopBy(loopBy);
 $("loop-list").addEventListener("click", (e) => {
   const target = e.target as HTMLElement;
   const choose = target.closest<HTMLElement>("[data-choose]");
@@ -2416,6 +2496,7 @@ function loopsText(): string {
     .map((l, i) => {
       const parts = [`Boucle ${i + 1} : ${km(l.lengthM)}`];
       if (network.elevation) parts.push(`D+ ≈ ${Math.round(l.ascentM / 10) * 10} m`);
+      if (l.estimatedS > 0) parts.push(`≈ ${duration(Math.round(l.estimatedS / 300) / 12)}`);
       if (l.retrace > 0.03) parts.push(`${Math.round(l.retrace * 100)} % d'aller-retour`);
       const k = l.key;
       if (loopWorkout && loopWorkout.workout.terrain !== "any")
@@ -2432,8 +2513,11 @@ function loopsText(): string {
 }
 
 async function toolProposeLoops(a: Record<string, unknown>): Promise<ToolResult> {
+  const hours = Number(a.duration_h);
+  const byTime = Number.isFinite(hours) && hours > 0;
   const dist = Math.round(Number(a.distance_km));
-  if (!(dist >= 5 && dist <= 300)) return fail("distance à choisir entre 5 et 300 km.", "Distance de boucle invalide");
+  if (byTime && !(hours >= 0.25 && hours <= 14)) return fail("durée à choisir entre 15 min et 14 h.", "Durée de boucle invalide");
+  if (!byTime && !(dist >= 5 && dist <= 300)) return fail("distance à choisir entre 5 et 300 km, ou une durée (duration_h).", "Distance de boucle invalide");
   const start = await toolPlace(argStr(a.start), true);
   if (typeof start === "string") return fail(start, "Départ introuvable");
   goRoutes();
@@ -2442,13 +2526,22 @@ async function toolProposeLoops(a: Record<string, unknown>): Promise<ToolResult>
   if (!loopMode) openLoop();
   if (!loopMode) return fail("le réseau routier est encore en préparation.", "Réseau routier pas prêt");
   setLoopWorkout(null);
-  $<HTMLInputElement>("loop-km").value = String(dist);
+  if (byTime) {
+    const q = Math.round(hours * 4) / 4;
+    $<HTMLInputElement>("loop-h").value = String(Math.floor(q));
+    $<HTMLSelectElement>("loop-min").value = String(Math.round((q % 1) * 60));
+    setLoopBy("duration");
+  } else {
+    $<HTMLInputElement>("loop-km").value = String(dist);
+    setLoopBy("distance");
+  }
+  const what = loopTargetLabel();
   $<HTMLSelectElement>("loop-dir").value = TOOL_HEADING[argStr(a.direction)] ?? "";
   const err = await toolLoops(start);
-  if (err) return fail(err, `Boucles de ${dist} km impossibles`);
+  if (err) return fail(err, `Boucles de ${what} impossibles`);
   return {
     ok: true,
-    label: `${loops.length} boucles de ${dist} km (${PROFILE_LABEL[options.profile].toLowerCase()}) depuis ${start.label}`,
+    label: `${loops.length} boucles de ${what} (${PROFILE_LABEL[options.profile].toLowerCase()}) depuis ${start.label}`,
     text: `${loops.length} boucles affichées sur la carte, départ : ${start.label}, ${opts} :\n${loopsText()}\nElle peut cliquer sur une boucle pour la mettre en avant, puis sur « Choisir » pour la garder et l'ajuster.`,
   };
 }
@@ -2496,9 +2589,9 @@ async function coachTool(name: string, a: Record<string, unknown>): Promise<Tool
       }
       // Départ = arrivée : c'est une boucle
       if (pts.length === 2 && samePlace(pts[0], pts[1])) {
-        if (Number(a.distance_km) > 0) return toolProposeLoops({ ...a, start: names[0] });
+        if (Number(a.distance_km) > 0 || Number(a.duration_h) > 0) return toolProposeLoops({ ...a, start: names[0] });
         return fail(
-          "départ et arrivée identiques. Pour revenir au point de départ, appelle propose_loops avec start et distance_km.",
+          "départ et arrivée identiques. Pour revenir au point de départ, appelle propose_loops avec start et distance_km (ou duration_h).",
           "Départ et arrivée identiques",
           "c'est une boucle, le coach passe aux boucles",
         );

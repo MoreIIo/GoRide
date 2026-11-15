@@ -1,11 +1,13 @@
-//! Boucles automatiques (F4) : « 50 km depuis chez moi », plusieurs propositions différentes.
+//! Boucles automatiques (F4) : « 50 km depuis chez moi » ou « 3 h depuis chez moi »,
+//! plusieurs propositions différentes.
 //!
 //! Principe :
 //! 1. Pour chaque candidate, on choisit une direction et on place 2 à 4 points
 //!    de passage sur un cercle qui passe par le départ.
 //! 2. On calcule la boucle départ → points → départ avec les réglages choisis ;
 //!    les routes déjà empruntées coûtent plus cher, pour éviter les allers-retours.
-//! 3. On ajuste la taille du cercle jusqu'à tomber dans la tolérance de distance.
+//! 3. On ajuste la taille du cercle jusqu'à tomber dans la tolérance de distance
+//!    (ou de durée : la durée est estimée d'après la vitesse sur le plat et le dénivelé).
 //! 4. On garde les meilleures candidates qui se ressemblent le moins.
 //!
 //! Les candidates sont calculées en parallèle sur tous les cœurs.
@@ -32,6 +34,18 @@ const CALIBRATION_STEPS: usize = 4;
 const MAX_ROUNDS: usize = 3;
 /// Écart maximal toléré en dernier recours, en multiple de la tolérance (2 × 5 % = 10 %).
 const MAX_ERROR_FACTOR: f64 = 2.0;
+/// Vitesse moyenne sur le plat par défaut (km/h), pour estimer la durée d'une boucle.
+pub const DEFAULT_FLAT_SPEED_KMH: f64 = 27.0;
+/// Équivalent plat d'un mètre de montée (m) : 100 m de D+ « coûtent » autant de temps
+/// que 1,2 km sur le plat (montée lente, en partie rattrapée dans la descente).
+const CLIMB_EQUIV_M: f64 = 12.0;
+
+/// Durée estimée d'une sortie (secondes) : distance plus équivalent plat du dénivelé,
+/// à la vitesse moyenne sur le plat.
+pub fn estimate_ride_s(length_m: f64, ascent_m: f64, flat_speed_kmh: f64) -> f64 {
+    let v = flat_speed_kmh.clamp(10.0, 60.0) / 3.6;
+    (length_m + ascent_m.max(0.0) * CLIMB_EQUIV_M) / v
+}
 
 fn default_tolerance() -> f64 {
     0.05
@@ -44,8 +58,16 @@ fn default_count() -> usize {
 #[serde(rename_all = "camelCase")]
 pub struct LoopRequest {
     pub start: [f64; 2],
+    /// Distance visée (m). Ignorée si `duration_s` est donnée.
+    #[serde(default)]
     pub distance_m: f64,
-    /// Écart accepté sur la distance (0,05 = ± 5 %).
+    /// Durée visée (s) : la boucle est alors calibrée sur le temps estimé plutôt que sur la distance.
+    #[serde(default)]
+    pub duration_s: Option<f64>,
+    /// Vitesse moyenne sur le plat (km/h) pour estimer les durées.
+    #[serde(default)]
+    pub flat_speed_kmh: Option<f64>,
+    /// Écart accepté sur la distance ou la durée (0,05 = ± 5 %).
     #[serde(default = "default_tolerance")]
     pub tolerance: f64,
     /// Nombre de propositions voulues.
@@ -59,6 +81,32 @@ pub struct LoopRequest {
     pub heading_deg: Option<f64>,
 }
 
+impl LoopRequest {
+    fn speed_kmh(&self) -> f64 {
+        self.flat_speed_kmh.filter(|v| v.is_finite() && *v > 0.0).unwrap_or(DEFAULT_FLAT_SPEED_KMH)
+    }
+    /// Boucle calibrée sur la durée plutôt que sur la distance.
+    fn by_time(&self) -> bool {
+        self.duration_s.is_some_and(|d| d > 0.0)
+    }
+    /// Cible en « mètres équivalent plat » : la distance, ou la durée × vitesse sur le plat.
+    fn target_m(&self) -> f64 {
+        match self.duration_s.filter(|d| *d > 0.0) {
+            Some(d) => d * self.speed_kmh() / 3.6,
+            None => self.distance_m,
+        }
+    }
+    /// Mesure d'une boucle, comparable à `target_m`.
+    fn measure(&self, length_m: f64, ascent_m: f64) -> f64 {
+        if self.by_time() { length_m + ascent_m.max(0.0) * CLIMB_EQUIV_M } else { length_m }
+    }
+    /// Écart relatif d'une boucle à la cible (0,05 = 5 %).
+    fn error(&self, c: &LoopProposal) -> f64 {
+        let t = self.target_m();
+        (self.measure(c.length_m, c.ascent_m) - t).abs() / t
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LoopProposal {
@@ -70,6 +118,8 @@ pub struct LoopProposal {
     pub length_m: f64,
     /// Dénivelé positif estimé (m).
     pub ascent_m: f64,
+    /// Durée estimée (s), à la vitesse sur le plat demandée.
+    pub estimated_s: f64,
     /// Part de la boucle parcourue deux fois (0 à 1) : allers-retours.
     pub retrace: f64,
     /// Mètres parcourus par tronçon, triés par tronçon (comparaison entre boucles).
@@ -162,7 +212,8 @@ fn build_candidate(router: &Router, start: &Snap, req: &LoopRequest, opts: &Rout
     let n = (k + 1) as f64;
     // Périmètre d'un polygone régulier à k + 1 sommets inscrit dans un cercle de rayon R : n · 2R · sin(π / n)
     let perimeter_per_r = n * 2.0 * (std::f64::consts::PI / n).sin();
-    let mut radius = req.distance_m / (DETOUR * perimeter_per_r);
+    let target = req.target_m();
+    let mut radius = target / (DETOUR * perimeter_per_r);
     let mut best: Option<LoopProposal> = None;
 
     for _ in 0..CALIBRATION_STEPS {
@@ -187,17 +238,18 @@ fn build_candidate(router: &Router, start: &Snap, req: &LoopRequest, opts: &Rout
         // la boucle est loin de la bonne taille : elle sera recalculée de toute façon.
         let mut legs = route_legs(router, &snaps, opts)?;
         let rough_len: f64 = legs.iter().map(|l| l.length_m).sum();
-        let close = (rough_len / req.distance_m - 1.0).abs() < 0.25;
+        let rough_ascent: f64 = if req.by_time() { legs.iter().map(|l| l.ascent_estimate(&router.graph)).sum() } else { 0.0 };
+        let close = (req.measure(rough_len, rough_ascent) / target - 1.0).abs() < 0.25;
         for _ in 0..if close { 3 } else { 0 } {
             if !straighten(router, &mut snaps, &legs, opts) {
                 break;
             }
             legs = route_legs(router, &snaps, opts)?;
         }
-        let candidate = finish(router, &snaps, legs);
-        let err = (candidate.length_m - req.distance_m).abs();
-        let better = best.as_ref().is_none_or(|b| err < (b.length_m - req.distance_m).abs());
-        let ratio = req.distance_m / candidate.length_m.max(1.0);
+        let candidate = finish(router, &snaps, legs, req.speed_kmh());
+        let err = req.error(&candidate);
+        let better = best.as_ref().is_none_or(|b| err < req.error(b));
+        let ratio = target / req.measure(candidate.length_m, candidate.ascent_m).max(1.0);
         if better {
             best = Some(candidate);
         }
@@ -293,7 +345,7 @@ fn straighten(router: &Router, snaps: &mut [Snap], legs: &[Leg], opts: &RouteOpt
     changed
 }
 
-fn finish(router: &Router, snaps: &[Snap], legs: Vec<Leg>) -> LoopProposal {
+fn finish(router: &Router, snaps: &[Snap], legs: Vec<Leg>, flat_speed_kmh: f64) -> LoopProposal {
     let length_m: f64 = legs.iter().map(|l| l.length_m).sum();
     let ascent_m: f64 = legs.iter().map(|l| l.ascent_estimate(&router.graph)).sum();
     // Empreinte et allers-retours
@@ -322,6 +374,7 @@ fn finish(router: &Router, snaps: &[Snap], legs: Vec<Leg>) -> LoopProposal {
         legs,
         length_m,
         ascent_m,
+        estimated_s: estimate_ride_s(length_m, ascent_m, flat_speed_kmh),
         retrace: if length_m > 0.0 { repeated / length_m } else { 0.0 },
         footprint,
     }
@@ -334,7 +387,14 @@ pub fn propose_loops(
     opts: &RouteOptions,
     excluded: &[Vec<(u32, f32)>],
 ) -> Result<Vec<LoopProposal>, String> {
-    if !(2_000.0..=400_000.0).contains(&req.distance_m) {
+    if req.by_time() {
+        if !(900.0..=14.0 * 3600.0).contains(&req.duration_s.unwrap_or(0.0)) {
+            return Err("Durée de boucle à choisir entre 15 min et 14 h.".into());
+        }
+        if !(2_000.0..=400_000.0).contains(&req.target_m()) {
+            return Err("Durée trop longue ou trop courte pour cette vitesse : vise entre 2 et 400 km.".into());
+        }
+    } else if !(2_000.0..=400_000.0).contains(&req.distance_m) {
         return Err("Distance de boucle à choisir entre 2 et 400 km.".into());
     }
     let start = router.snap(req.start, opts).map_err(|e| e.to_string())?;
@@ -344,7 +404,7 @@ pub fn propose_loops(
     // Si trop peu tombent à la bonne distance (bord de mer, réseau clairsemé), on refait des tirages.
     let m = (count * 4).max(12);
     let mut rng = Rng(req.seed.wrapping_mul(0x2545_F491_4F6C_DD1D) ^ 0x5EED);
-    let in_tolerance = |c: &LoopProposal| (c.length_m - req.distance_m).abs() / req.distance_m <= req.tolerance;
+    let in_tolerance = |c: &LoopProposal| req.error(c) <= req.tolerance;
     let mut candidates: Vec<LoopProposal> = Vec::new();
     for _round in 0..MAX_ROUNDS {
         let base = rng.unit() * 360.0;
@@ -368,14 +428,15 @@ pub fn propose_loops(
         }
     }
     // Jamais de boucle franchement hors distance
-    candidates.retain(|c| (c.length_m - req.distance_m).abs() / req.distance_m <= MAX_ERROR_FACTOR * req.tolerance);
+    candidates.retain(|c| req.error(c) <= MAX_ERROR_FACTOR * req.tolerance);
     if candidates.is_empty() {
-        return Err("Aucune boucle trouvée depuis ce point avec ces réglages : essaie une autre distance ou un autre départ.".into());
+        let what = if req.by_time() { "durée" } else { "distance" };
+        return Err(format!("Aucune boucle trouvée depuis ce point avec ces réglages : essaie une autre {what} ou un autre départ."));
     }
 
     // Classement : dans la tolérance d'abord, puis peu d'allers-retours
     let score = |c: &LoopProposal| {
-        let err = (c.length_m - req.distance_m).abs() / req.distance_m;
+        let err = req.error(c);
         let out = if err > req.tolerance { 1.0 + err } else { err };
         out + 1.5 * c.retrace + 0.5 * c.hooks as f64
     };
@@ -399,7 +460,8 @@ pub fn propose_loops(
         }
     }
     if chosen.is_empty() {
-        return Err("Plus de nouvelles boucles différentes depuis ce point : change la distance ou la direction.".into());
+        let what = if req.by_time() { "la durée" } else { "la distance" };
+        return Err(format!("Plus de nouvelles boucles différentes depuis ce point : change {what} ou la direction."));
     }
     Ok(chosen)
 }
@@ -440,6 +502,26 @@ mod tests {
         hooked.extend((0..=30).rev().map(|i| [x + 0.00005, i as f64 * 0.0009]));
         hooked.extend(straight[51..].iter().copied());
         assert_eq!(count_hooks(&[leg(hooked)]), 1);
+    }
+
+    #[test]
+    fn ride_time_estimate() {
+        // 27 km sur le plat à 27 km/h : 1 h ; 100 m de D+ ajoutent l'équivalent de 1,2 km
+        assert!((estimate_ride_s(27_000.0, 0.0, 27.0) - 3600.0).abs() < 1e-6);
+        assert!((estimate_ride_s(27_000.0, 100.0, 27.0) - 3760.0).abs() < 1e-6);
+        let req = LoopRequest {
+            start: [0.0, 0.0],
+            distance_m: 0.0,
+            duration_s: Some(3.0 * 3600.0),
+            flat_speed_kmh: Some(25.0),
+            tolerance: 0.05,
+            count: 4,
+            seed: 0,
+            heading_deg: None,
+        };
+        assert!(req.by_time());
+        assert!((req.target_m() - 75_000.0).abs() < 1e-6);
+        assert!((req.measure(70_000.0, 500.0) - 76_000.0).abs() < 1e-6);
     }
 
     #[test]

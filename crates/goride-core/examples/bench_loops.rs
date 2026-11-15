@@ -27,7 +27,7 @@ fn main() {
     ];
     for (name, start, dist, heading, profile) in cases {
         let opts = RouteOptions { profile: *profile, ..Default::default() };
-        let req = LoopRequest { start: *start, distance_m: *dist, tolerance: 0.05, count: 5, seed: 1, heading_deg: *heading };
+        let req = LoopRequest { start: *start, distance_m: *dist, tolerance: 0.05, count: 5, seed: 1, heading_deg: *heading, duration_s: None, flat_speed_kmh: None };
         let t = Instant::now();
         match propose_loops(&r, &req, &opts, &[]) {
             Ok(loops) => {
