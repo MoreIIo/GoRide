@@ -11,6 +11,9 @@ import { getTheme, setTheme, THEME_EVENT, type Theme } from "./theme";
 import { duration, km, meters } from "./format";
 import { Coach, TERRAIN_LABEL, fmtDuration, type ToolResult, type Workout, type WorkoutInfo } from "./coach";
 import { runIntro } from "./intro";
+import { collapseSheets, initSheets, onSheetChange, openSheetPartly, setSheet } from "./sheets";
+import { Navigation } from "./navigation";
+import type { Maneuver } from "./nav_core";
 import { LOOP_COLORS, TrackMap } from "./map";
 import { joinLegs, Planner, type Leg, type RoadClass, type RouteOptions, type Surface } from "./planner";
 import { placeName, reverseInfo, searchPlaces, type Place } from "./places";
@@ -37,26 +40,16 @@ if (isMobile) document.body.classList.add("mobile");
 for (const ev of ["gesturestart", "gesturechange", "gestureend"])
   document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
 
-/**
- * Sur téléphone, les panneaux deviennent des tiroirs qui montent du bas de l'écran.
- * Repliés, ils n'en montrent que le haut (titre, distance…) ; la poignée les déplie.
- */
-const SHEETS = ["stats", "loop-panel", "library-panel", "rides-panel", "ride-detail"];
-function setSheet(id: string, open: boolean) {
-  document.getElementById(id)?.classList.toggle("expanded", open);
-}
+// Sur téléphone, les panneaux deviennent des tiroirs qui montent du bas de l'écran (sheets.ts).
 if (isMobile) {
+  initSheets();
+  // Tiroirs et réglages du tracé se partagent le bas de l'écran : un tiroir qui s'ouvre ferme les réglages.
+  onSheetChange((_, open) => open && setSettingsOpen(false));
   for (const id of ["loop-panel", "library-panel", "rides-panel"]) setSheet(id, true);
-  for (const id of SHEETS) {
-    const el = document.getElementById(id)!;
-    // La poignée est dessinée en CSS : un toucher dans la bande du haut plie ou déplie.
-    el.addEventListener("click", (e) => {
-      if (e.clientY - el.getBoundingClientRect().top < 30) el.classList.toggle("expanded");
-    });
-  }
-  // Toucher la carte (pour poser un point, choisir un départ…) replie les tiroirs.
+  // Toucher la carte (pour poser un point, choisir un départ…) replie les tiroirs et les réglages.
   document.getElementById("map")!.addEventListener("pointerdown", () => {
-    for (const id of SHEETS) setSheet(id, false);
+    collapseSheets();
+    setSettingsOpen(false);
   });
   // Boucles ou bibliothèque qu'on ouvre : tiroir déplié d'emblée.
   for (const id of ["loop-panel", "library-panel"]) {
@@ -71,10 +64,6 @@ if (isMobile) {
   // Textes pensés pour le PC (USB, glisser-déposer) remplacés sur téléphone
   document.getElementById("rides-empty")!.innerHTML =
     "Aucune sortie pour l'instant. Importe les fichiers <b>.fit</b> de ton compteur (depuis Garmin Connect : Exporter le fichier d'origine), ou des <b>.gpx</b> / <b>.tcx</b>.";
-  // Des boucles viennent d'être proposées : on déplie pour les montrer.
-  new MutationObserver(() => {
-    if (document.getElementById("loop-list")!.children.length > 0) setSheet("loop-panel", true);
-  }).observe(document.getElementById("loop-list")!, { childList: true });
 }
 
 interface Share<T> {
@@ -173,6 +162,11 @@ let routeName = "Nouvel itinéraire";
 let summarySeq = 0;
 /** Étapes affichées (une par paire de points de passage consécutifs). */
 let lastLegs: Leg[] = [];
+/**
+ * Cadrer la carte sur l'itinéraire dès que son bilan s'affiche : le panneau et le profil
+ * viennent alors d'apparaître, et le tracé doit tenir dans la place qu'ils laissent.
+ */
+let fitOnSummary = false;
 
 const planner = new Planner(trackMap.map, {
   onChange(legs, final) {
@@ -216,8 +210,17 @@ async function summarize(joined: Leg) {
     showStats(s.track, current.name, s);
     profile.setTrack(s.track);
     profile.setMarks(waypointDistances(s.track.stats.distanceM));
+    if (fitOnSummary) {
+      fitOnSummary = false;
+      // … une fois leur animation d'entrée terminée, pour mesurer leur vraie place
+      window.setTimeout(() => trackMap.fit(s.track.coords), 450);
+    }
   } catch (err) {
     toast(`Bilan de l'itinéraire impossible : ${err}`);
+    if (fitOnSummary) {
+      fitOnSummary = false;
+      trackMap.fit(joined.coords);
+    }
   }
 }
 
@@ -339,11 +342,16 @@ $("opt-traffic").addEventListener("click", (e) => {
 });
 $("opt-grade").addEventListener("change", (e) => changeOptions({ maxGrade: Number((e.target as HTMLSelectElement).value) }));
 
-/** Réglages en fenêtre au-dessus de la barre d'outils. */
+/**
+ * Réglages en fenêtre au-dessus de la barre d'outils. Sur téléphone, ils prennent la place
+ * des tiroirs et du profil le temps du réglage (classe « settings-open ») : plus rien ne se
+ * retrouve caché derrière autre chose, et tout revient à la fermeture.
+ */
 function setSettingsOpen(open: boolean) {
   $("settings").classList.toggle("hidden", !open);
   $("btn-settings").classList.toggle("open", open);
   $("btn-settings").setAttribute("aria-expanded", String(open));
+  document.body.classList.toggle("settings-open", open);
 }
 $("btn-settings").addEventListener("click", () => setSettingsOpen($("settings").classList.contains("hidden")));
 $("settings-toggle").addEventListener("click", () => setSettingsOpen(false));
@@ -357,6 +365,8 @@ interface LoopProposal {
   legs: Leg[];
   lengthM: number;
   ascentM: number;
+  /** Durée estimée (s), à la moyenne sur le plat demandée. */
+  estimatedS: number;
   retrace: number;
   /** Portion clé pour la séance (boucles de séance seulement). */
   key?: KeySection | null;
@@ -441,6 +451,51 @@ function loopKm(): number {
   return Number.isFinite(v) ? Math.min(300, Math.max(5, v)) : 50;
 }
 
+/** Boucle choisie par distance (« 50 km ») ou par durée (« 3 h »). */
+const LOOP_BY_KEY = "goride.loopBy";
+let loopBy: "distance" | "duration" = (() => {
+  try {
+    return localStorage.getItem(LOOP_BY_KEY) === "duration" ? "duration" : "distance";
+  } catch {
+    return "distance";
+  }
+})();
+
+function setLoopBy(v: "distance" | "duration") {
+  loopBy = v;
+  try {
+    localStorage.setItem(LOOP_BY_KEY, v);
+  } catch {
+    /* préférence non gardée : sans importance */
+  }
+  setSegmented("loop-by", v);
+  const byTime = v === "duration";
+  $("loop-field-km").classList.toggle("hidden", byTime);
+  $("loop-field-time").classList.toggle("hidden", !byTime);
+  $("loop-field-speed").classList.toggle("hidden", !byTime);
+  $("loop-time-hint").classList.toggle("hidden", !byTime);
+  loopShown = [];
+}
+
+/** Durée visée (heures), entre 15 min et 14 h. */
+function loopHours(): number {
+  const h = Number($<HTMLInputElement>("loop-h").value);
+  const min = Number($<HTMLSelectElement>("loop-min").value);
+  const t = (Number.isFinite(h) ? Math.floor(h) : 3) + (Number.isFinite(min) ? min : 0) / 60;
+  return Math.min(14, Math.max(0.25, t));
+}
+
+/** Moyenne sur le plat (km/h) pour estimer la durée des boucles. */
+function loopSpeed(): number {
+  const v = Number($<HTMLInputElement>("loop-speed").value);
+  return Number.isFinite(v) && v > 0 ? Math.min(60, Math.max(10, v)) : speed();
+}
+
+/** Ce que l'on vise, en clair : « 50 km » ou « 3 h 00 ». */
+function loopTargetLabel(): string {
+  return loopBy === "duration" ? duration(loopHours()) : `${loopKm()} km`;
+}
+
 /** Boucles pour une séance : bandeau en haut du panneau, distance conseillée. */
 function setLoopWorkout(w: { workout: Workout; info: WorkoutInfo } | null) {
   loopWorkout = w;
@@ -456,6 +511,8 @@ function setLoopWorkout(w: { workout: Workout; info: WorkoutInfo } | null) {
           ? `Une portion plate de ${effort} sans relance`
           : `${fmtDuration(w.info.totalS)} · ${TERRAIN_LABEL.any.toLowerCase()}`;
     $<HTMLInputElement>("loop-km").value = String(w.info.suggestedKm);
+    // La séance donne une distance conseillée : on repasse en distance
+    if (loopBy !== "distance") setLoopBy("distance");
   }
 }
 
@@ -486,9 +543,12 @@ async function requestLoops(more: boolean): Promise<string | null> {
   go.textContent = "Calcul des boucles…";
   try {
     const t0 = performance.now();
+    const byTime = loopBy === "duration" && !loopWorkout;
     const request = {
       start: loopStart,
-      distanceM: loopKm() * 1000,
+      distanceM: byTime ? 0 : loopKm() * 1000,
+      durationS: byTime ? Math.round(loopHours() * 3600) : null,
+      flatSpeedKmh: byTime ? loopSpeed() : speed(),
       tolerance: 0.05,
       count: 5,
       seed: loopSeed,
@@ -502,6 +562,13 @@ async function requestLoops(more: boolean): Promise<string | null> {
     loopShown.push(...res.map((l) => l.id));
     loopSelected = null;
     showLoops();
+    // Téléphone : le tiroir passe à mi-hauteur, la carte cadre les boucles dans la place qui reste
+    // (grand ouvert, il ne laissait qu'une bande de carte et le cadrage partait très loin).
+    if (isMobile && loops.length) {
+      await openSheetPartly("loop-panel");
+      // … et la liste des boucles remonte sous la poignée (le formulaire reste au-dessus, en défilant)
+      $("loop-panel").scrollTo({ top: $("loop-list").offsetTop - 38, behavior: "smooth" });
+    }
     trackMap.fit(loops.flatMap((l) => joinLegs(l.legs).coords));
     return loops.length ? null : "Aucune boucle trouvée avec ces réglages.";
   } catch (err) {
@@ -546,6 +613,7 @@ function renderLoopList() {
     .map((l, i) => {
       const parts = [km(l.lengthM)];
       if (network.elevation) parts.push(`D+ ≈ ${meters(Math.round(l.ascentM / 10) * 10)}`);
+      if (l.estimatedS > 0) parts.push(`≈ ${duration(Math.round(l.estimatedS / 300) / 12)}`);
       if (l.retrace > 0.03) parts.push(`${Math.round(l.retrace * 100)} % aller-retour`);
       return `<li class="loop-item${loopSelected === i ? " selected" : ""}" data-i="${i}">
         <span class="swatch" style="background:${LOOP_COLORS[i % LOOP_COLORS.length]}"></span>
@@ -565,7 +633,11 @@ function selectLoop(i: number) {
 function chooseLoop(i: number) {
   const l = loops[i];
   if (!l) return;
-  routeName = loopWorkout ? `${loopWorkout.workout.name} · ${Math.round(l.lengthM / 1000)} km` : `Boucle de ${Math.round(l.lengthM / 1000)} km`;
+  routeName = loopWorkout
+    ? `${loopWorkout.workout.name} · ${Math.round(l.lengthM / 1000)} km`
+    : loopBy === "duration"
+      ? `Boucle de ${duration(loopHours())} · ${Math.round(l.lengthM / 1000)} km`
+      : `Boucle de ${Math.round(l.lengthM / 1000)} km`;
   currentFile = null;
   savedSig = null;
   if (current?.kind === "import") {
@@ -573,9 +645,9 @@ function chooseLoop(i: number) {
     trackMap.clearTrack();
   }
   closeLoop();
+  fitOnSummary = true; // cadrage une fois le panneau et le profil affichés
   planner.load(l.waypoints, l.legs);
   setDrawing(true); // la boucle reste modifiable : glisser un point pour l'ajuster
-  trackMap.fit(joinLegs(l.legs).coords);
 }
 
 trackMap.onLoopStart = (p) => setLoopStart(p);
@@ -595,6 +667,29 @@ $("loop-km").addEventListener("change", () => {
   loopShown = [];
 });
 $("loop-dir").addEventListener("change", () => (loopShown = []));
+$("loop-by").addEventListener("click", (e) => {
+  const v = (e.target as HTMLElement).closest("button")?.dataset.v;
+  if ((v === "distance" || v === "duration") && v !== loopBy) {
+    setLoopBy(v);
+    loops = [];
+    loopSelected = null;
+    showLoops();
+  }
+});
+$("loop-h").addEventListener("change", () => {
+  const h = loopHours();
+  $<HTMLInputElement>("loop-h").value = String(Math.floor(h));
+  $<HTMLSelectElement>("loop-min").value = String(Math.round((h % 1) * 60 / 15) * 15 % 60);
+  loopShown = [];
+});
+$("loop-min").addEventListener("change", () => (loopShown = []));
+$("loop-speed").addEventListener("change", () => {
+  $<HTMLInputElement>("loop-speed").value = String(Math.round(loopSpeed()));
+  loopShown = [];
+});
+// Au départ, la moyenne des boucles reprend celle du bilan de l'itinéraire
+$<HTMLInputElement>("loop-speed").value = String(Math.round(speed()));
+setLoopBy(loopBy);
 $("loop-list").addEventListener("click", (e) => {
   const target = e.target as HTMLElement;
   const choose = target.closest<HTMLElement>("[data-choose]");
@@ -1517,21 +1612,26 @@ async function shareRoute(format: "gpx" | "fit", safe: string) {
 
 let meMarker: maplibregl.Marker | null = null;
 
-/** Position actuelle (lon, lat), après avoir demandé l'autorisation si besoin. */
-async function myPosition(): Promise<[number, number] | null> {
+/**
+ * Position actuelle (lon, lat), après avoir demandé l'autorisation si besoin.
+ * `quiet` (ouverture de l'appli) : aucun message, et on ne redemande pas une autorisation
+ * déjà refusée — la carte s'ouvre alors sur la France entière.
+ */
+async function myPosition(quiet = false): Promise<[number, number] | null> {
   type Perm = { location: string };
   try {
     let perm = await invoke<Perm>("plugin:geolocation|check_permissions");
-    if (perm.location !== "granted") perm = await invoke<Perm>("plugin:geolocation|request_permissions", { permissions: ["location"] });
+    if (perm.location !== "granted" && (!quiet || perm.location === "prompt"))
+      perm = await invoke<Perm>("plugin:geolocation|request_permissions", { permissions: ["location"] });
     if (perm.location !== "granted") {
-      toast("GoRide n'a pas accès à ta position : autorise-la dans les réglages du téléphone (GoRide → Position).");
+      if (!quiet) toast("GoRide n'a pas accès à ta position : autorise-la dans les réglages du téléphone (GoRide → Position).");
       return null;
     }
-    toast("Recherche de ta position…", "ok", 0);
+    if (!quiet) toast("Recherche de ta position…", "ok", 0);
     const pos = await invoke<{ coords: { longitude: number; latitude: number } }>("plugin:geolocation|get_current_position", {
       options: { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 },
     });
-    $("toast").classList.add("hidden");
+    if (!quiet) $("toast").classList.add("hidden");
     const p: [number, number] = [pos.coords.longitude, pos.coords.latitude];
     if (!meMarker) {
       const el = document.createElement("div");
@@ -1541,7 +1641,7 @@ async function myPosition(): Promise<[number, number] | null> {
     meMarker.setLngLat(p).addTo(trackMap.map);
     return p;
   } catch (err) {
-    toast(`Position indisponible : ${err}`);
+    if (!quiet) toast(`Position indisponible : ${err}`);
     return null;
   }
 }
@@ -1559,6 +1659,43 @@ $("loop-here").addEventListener("click", async () => {
   setLoopStart(p);
   trackMap.map.flyTo({ center: p, zoom: Math.max(trackMap.map.getZoom(), 11), duration: 1200 });
 });
+
+// --- Navigation : guidage GPS le long de l'itinéraire affiché -------------------------------
+
+const nav = new Navigation({
+  trackMap,
+  toast: (m, k, ms) => toast(m, k, ms),
+  planSpeed: () => speed(),
+  inTauri,
+  // Fin du guidage : retour à la vue d'ensemble de l'itinéraire
+  onEnd: () => requestAnimationFrame(() => trackMap.fit(current?.track.coords)),
+});
+
+/**
+ * Lance le guidage sur l'itinéraire affiché (tracé, boucle choisie ou trace importée).
+ * `preview` : aperçu sans GPS, le parcours défile tout seul.
+ */
+async function startNavigation(preview: boolean) {
+  if (!current || nav.active) return;
+  const track = current.track;
+  closeLoop();
+  closeLibrary();
+  setSettingsOpen(false);
+  if (trackMap.drawing) setDrawing(false);
+  removeSearchPin();
+  trackMap.setCursor(null);
+  let maneuvers: Maneuver[] = [];
+  if (inTauri) {
+    try {
+      maneuvers = await invoke<Maneuver[]>("route_guidance", { coords: track.coords });
+    } catch (err) {
+      toast(`Directions indisponibles (${err}) : le guidage donnera seulement la distance et l'arrivée.`);
+    }
+  }
+  await nav.start(track, maneuvers, preview);
+}
+$("btn-nav").addEventListener("click", () => startNavigation(false));
+$("btn-nav-preview").addEventListener("click", () => startNavigation(true));
 
 // --- Mes itinéraires : enregistrés dans un dossier choisi une fois -----------------
 
@@ -1775,7 +1912,7 @@ async function openSavedRoute(r: SavedRouteSummary) {
         /* rien */
       }
       updateSaveState();
-      trackMap.fit(sr.track.coords);
+      fitOnSummary = true;
       return;
     }
     options = previousOptions;
@@ -2163,6 +2300,11 @@ window.addEventListener("keydown", (e) => {
   const typing = t.tagName === "INPUT" || t.tagName === "SELECT" || t.isContentEditable;
   const mod = e.ctrlKey || e.metaKey;
   const k = e.key.toLowerCase();
+  if (nav.active) {
+    // Pendant le guidage, seul Échap agit (il arrête) : pas de tracé ni de panneau par mégarde
+    if (k === "escape") nav.stop();
+    return;
+  }
   if (mod && k === "k") {
     e.preventDefault();
     $("search").focus();
@@ -2354,6 +2496,7 @@ function loopsText(): string {
     .map((l, i) => {
       const parts = [`Boucle ${i + 1} : ${km(l.lengthM)}`];
       if (network.elevation) parts.push(`D+ ≈ ${Math.round(l.ascentM / 10) * 10} m`);
+      if (l.estimatedS > 0) parts.push(`≈ ${duration(Math.round(l.estimatedS / 300) / 12)}`);
       if (l.retrace > 0.03) parts.push(`${Math.round(l.retrace * 100)} % d'aller-retour`);
       const k = l.key;
       if (loopWorkout && loopWorkout.workout.terrain !== "any")
@@ -2370,8 +2513,11 @@ function loopsText(): string {
 }
 
 async function toolProposeLoops(a: Record<string, unknown>): Promise<ToolResult> {
+  const hours = Number(a.duration_h);
+  const byTime = Number.isFinite(hours) && hours > 0;
   const dist = Math.round(Number(a.distance_km));
-  if (!(dist >= 5 && dist <= 300)) return fail("distance à choisir entre 5 et 300 km.", "Distance de boucle invalide");
+  if (byTime && !(hours >= 0.25 && hours <= 14)) return fail("durée à choisir entre 15 min et 14 h.", "Durée de boucle invalide");
+  if (!byTime && !(dist >= 5 && dist <= 300)) return fail("distance à choisir entre 5 et 300 km, ou une durée (duration_h).", "Distance de boucle invalide");
   const start = await toolPlace(argStr(a.start), true);
   if (typeof start === "string") return fail(start, "Départ introuvable");
   goRoutes();
@@ -2380,13 +2526,22 @@ async function toolProposeLoops(a: Record<string, unknown>): Promise<ToolResult>
   if (!loopMode) openLoop();
   if (!loopMode) return fail("le réseau routier est encore en préparation.", "Réseau routier pas prêt");
   setLoopWorkout(null);
-  $<HTMLInputElement>("loop-km").value = String(dist);
+  if (byTime) {
+    const q = Math.round(hours * 4) / 4;
+    $<HTMLInputElement>("loop-h").value = String(Math.floor(q));
+    $<HTMLSelectElement>("loop-min").value = String(Math.round((q % 1) * 60));
+    setLoopBy("duration");
+  } else {
+    $<HTMLInputElement>("loop-km").value = String(dist);
+    setLoopBy("distance");
+  }
+  const what = loopTargetLabel();
   $<HTMLSelectElement>("loop-dir").value = TOOL_HEADING[argStr(a.direction)] ?? "";
   const err = await toolLoops(start);
-  if (err) return fail(err, `Boucles de ${dist} km impossibles`);
+  if (err) return fail(err, `Boucles de ${what} impossibles`);
   return {
     ok: true,
-    label: `${loops.length} boucles de ${dist} km (${PROFILE_LABEL[options.profile].toLowerCase()}) depuis ${start.label}`,
+    label: `${loops.length} boucles de ${what} (${PROFILE_LABEL[options.profile].toLowerCase()}) depuis ${start.label}`,
     text: `${loops.length} boucles affichées sur la carte, départ : ${start.label}, ${opts} :\n${loopsText()}\nElle peut cliquer sur une boucle pour la mettre en avant, puis sur « Choisir » pour la garder et l'ajuster.`,
   };
 }
@@ -2434,9 +2589,9 @@ async function coachTool(name: string, a: Record<string, unknown>): Promise<Tool
       }
       // Départ = arrivée : c'est une boucle
       if (pts.length === 2 && samePlace(pts[0], pts[1])) {
-        if (Number(a.distance_km) > 0) return toolProposeLoops({ ...a, start: names[0] });
+        if (Number(a.distance_km) > 0 || Number(a.duration_h) > 0) return toolProposeLoops({ ...a, start: names[0] });
         return fail(
-          "départ et arrivée identiques. Pour revenir au point de départ, appelle propose_loops avec start et distance_km.",
+          "départ et arrivée identiques. Pour revenir au point de départ, appelle propose_loops avec start et distance_km (ou duration_h).",
           "Départ et arrivée identiques",
           "c'est une boucle, le coach passe aux boucles",
         );
@@ -2611,5 +2766,9 @@ if (inTauri && !isMobile) {
   invoke<NetworkStatus>("network_status").then(renderNetwork);
 }
 
-// Écran d'ouverture puis vol jusqu'à la région
-runIntro(trackMap);
+// Écran d'ouverture, puis vol jusqu'à la position de l'utilisateur (téléphone, s'il l'autorise
+// et s'il est en France) ou, à défaut, jusqu'à la France entière.
+const inFrance = (p: [number, number]) => p[0] > -5.5 && p[0] < 10 && p[1] > 41 && p[1] < 51.5;
+const startHere: Promise<[number, number] | null> =
+  isMobile && inTauri ? myPosition(true).then((p) => (p && inFrance(p) ? p : null)) : Promise.resolve(null);
+runIntro(trackMap, startHere);

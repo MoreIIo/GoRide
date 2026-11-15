@@ -255,6 +255,61 @@ impl Router {
         Ok(Snap { seg: s, offset, point, distance_m })
     }
 
+    /// Cases de la grille qui touchent le carré de côté `2 × radius_m` centré sur `q` (mètres projetés).
+    fn cells_around(&self, q: [f64; 2], radius_m: f64) -> (i64, i64, i64, i64) {
+        let (x0, y0) = self.grid.cell_of([q[0] - radius_m, q[1] - radius_m]);
+        let (x1, y1) = self.grid.cell_of([q[0] + radius_m, q[1] + radius_m]);
+        (x0, y0, x1, y1)
+    }
+
+    /// Sommets du réseau à moins de `radius_m` d'un point : (sommet, distance en mètres),
+    /// ajoutés à `out` sans doublon. Sert au guidage (repérer les carrefours d'un tracé).
+    pub fn nodes_near(&self, lonlat: [f64; 2], radius_m: f64, out: &mut Vec<(u32, f64)>) {
+        let g = &self.graph;
+        let q = proj(self.kx, [lonlat[0] as f32, lonlat[1] as f32]);
+        let (x0, y0, x1, y1) = self.cells_around(q, radius_m);
+        let first = out.len();
+        for y in y0..=y1 {
+            for x in x0..=x1 {
+                for &s in self.grid.cell_segs(x, y) {
+                    for v in [g.seg_from[s as usize], g.seg_to[s as usize]] {
+                        let p = proj(self.kx, g.node_pos[v as usize]);
+                        let d = ((p[0] - q[0]).powi(2) + (p[1] - q[1]).powi(2)).sqrt();
+                        if d <= radius_m && !out[first..].iter().any(|&(w, _)| w == v) {
+                            out.push((v, d));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Vrai si une route du réseau (quelle qu'elle soit) passe à moins de `radius_m` du point.
+    pub fn road_near(&self, lonlat: [f64; 2], radius_m: f64) -> bool {
+        let g = &self.graph;
+        let q = proj(self.kx, [lonlat[0] as f32, lonlat[1] as f32]);
+        let (x0, y0, x1, y1) = self.cells_around(q, radius_m);
+        let r2 = radius_m * radius_m;
+        for y in y0..=y1 {
+            for x in x0..=x1 {
+                for &s in self.grid.cell_segs(x, y) {
+                    let pts = g.seg_points(s);
+                    for i in 0..pts.len().saturating_sub(1) {
+                        let (a, b) = (proj(self.kx, pts[i]), proj(self.kx, pts[i + 1]));
+                        let (dx, dy) = (b[0] - a[0], b[1] - a[1]);
+                        let l2 = dx * dx + dy * dy;
+                        let t = if l2 > 0.0 { (((q[0] - a[0]) * dx + (q[1] - a[1]) * dy) / l2).clamp(0.0, 1.0) } else { 0.0 };
+                        let (px, py) = (a[0] + dx * t - q[0], a[1] + dy * t - q[1]);
+                        if px * px + py * py <= r2 {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        false
+    }
+
     /// Meilleur itinéraire (au sens des réglages) entre deux points accrochés.
     pub fn route(&self, a: &Snap, b: &Snap, opts: &RouteOptions) -> Result<Leg, RouteError> {
         self.route_with(a, b, opts, None)

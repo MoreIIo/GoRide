@@ -38,6 +38,8 @@ fn request(seed: u64) -> LoopRequest {
         count: 4,
         seed,
         heading_deg: None,
+        duration_s: None,
+        flat_speed_kmh: None,
     }
 }
 
@@ -161,4 +163,21 @@ fn workout_loops_find_flat_stretches() {
     // Sans besoin de terrain, aucune portion n'est mise en avant
     let any = Need { terrain: Terrain::Any, ..need };
     assert!(key_section(&loops[0], &r.graph, &any).is_none());
+}
+
+#[test]
+fn loops_by_duration() {
+    let r = Router::new(grid());
+    let opts = RouteOptions::default();
+    // 30 min à 24 km/h sur un réseau plat : environ 12 km
+    let req = LoopRequest { distance_m: 0.0, duration_s: Some(1800.0), flat_speed_kmh: Some(24.0), ..request(4) };
+    let loops = propose_loops(&r, &req, &opts, &[]).unwrap();
+    assert!(!loops.is_empty());
+    for l in &loops {
+        assert!((l.estimated_s - 1800.0).abs() / 1800.0 <= 0.1, "durée estimée {} s", l.estimated_s);
+        assert!((l.length_m - 12_000.0).abs() / 12_000.0 <= 0.1, "longueur {} m", l.length_m);
+    }
+    // Durée hors bornes
+    let bad = LoopRequest { duration_s: Some(60.0), ..req };
+    assert!(propose_loops(&r, &bad, &opts, &[]).is_err());
 }

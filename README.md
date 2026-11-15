@@ -101,6 +101,7 @@ Tu as déjà suivi un itinéraire « vélo de route » qui t'envoie sur un chemi
 3. Android demande d'autoriser l'installation d'applis depuis ton navigateur : accepte, puis touche **Installer**.
 
 Sur téléphone, GoRide télécharge le **réseau routier tout prêt** de la région où tu traces (de 6 à 95 Mo selon la région, mis à jour chaque mois), sans rien calculer sur l'appareil. En plus des fonctions du PC :
+- **Navigation** : le bouton **Démarrer** lance le guidage sur ton itinéraire, comme un GPS — carte qui suit ta position, prochaine direction annoncée (vibration et son), distance et heure d'arrivée ;
 - **Ma position** : le bouton viseur centre la carte sur toi, et une boucle peut partir de là où tu es ;
 - **Partager** : les boutons GPX et Garmin envoient le parcours vers Garmin Connect, Drive, un e-mail… ;
 - **Importer** : tes sorties `.fit`, `.gpx` ou `.tcx` se choisissent dans l'appli Fichiers.
@@ -266,6 +267,7 @@ src/                  Interface TypeScript + MapLibre : carte, tracé, sorties, 
 - Données routières © [contributeurs OpenStreetMap](https://www.openstreetmap.org/copyright), extraits fournis par [Geofabrik](https://download.geofabrik.de)
 - Fonds de carte : [OpenFreeMap](https://openfreemap.org), [OpenTopoMap](https://opentopomap.org) (CC-BY-SA), [IGN Géoplateforme](https://geoservices.ign.fr)
 - Relief : [Mapzen Terrain Tiles](https://github.com/tilezen/joerd/blob/master/docs/attribution.md)
+- Contours de la France : [france-geojson](https://github.com/gregoiredavid/france-geojson), d'après les données de l'IGN
 - Construit avec [Rust](https://www.rust-lang.org), [Tauri](https://tauri.app), [MapLibre GL JS](https://maplibre.org) et [Ollama](https://ollama.com)
 
 ## 📄 Licence

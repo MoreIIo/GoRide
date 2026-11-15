@@ -159,6 +159,10 @@
           <svg class="ic-ok" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5" /></svg>
           <span id="btn-save-label">Enregistrer</span>
         </button>
+        <button id="btn-nav" class="btn primary nav-start mobile-only" title="Lancer le guidage GPS sur cet itinéraire">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20 12 4l7 16-7-4z" /></svg>
+          Démarrer
+        </button>
         <dl>
           <div class="hero"><dt>Distance</dt><dd id="st-dist">—</dd></div>
           <div><dt>Dénivelé +</dt><dd id="st-up">—</dd></div>
@@ -204,6 +208,10 @@
           <button id="btn-export" class="btn ghost small" title="Fichier GPX à l'endroit de ton choix">GPX</button>
           <button id="btn-export-fit" class="btn ghost small" title="Parcours pour compteur Garmin : à copier dans le dossier Garmin/NewFiles du compteur">Garmin</button>
         </div>
+        <button id="btn-nav-preview" class="btn ghost small full nav-preview" title="Fait défiler le parcours avec les annonces de direction, comme en navigation sur le téléphone">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5v14l11-7z" /></svg>
+          Aperçu du guidage
+        </button>
       </aside>
 
       <aside id="loop-panel" class="card glass loop-panel route-only hidden">
@@ -227,10 +235,31 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2" /><circle cx="12" cy="12" r="7" /></svg>
           Partir de ma position
         </button>
-        <div class="field">
+        <div class="segmented full" id="loop-by" role="radiogroup" aria-label="Boucle selon">
+          <button data-v="distance" class="active" role="radio">Distance</button>
+          <button data-v="duration" role="radio">Durée</button>
+        </div>
+        <div class="field" id="loop-field-km">
           <span class="label">Distance</span>
           <span class="km-input"><input id="loop-km" type="number" min="5" max="300" step="5" value="50" /> km</span>
         </div>
+        <div class="field hidden" id="loop-field-time">
+          <span class="label">Durée</span>
+          <span class="km-input time-input">
+            <input id="loop-h" type="number" min="0" max="14" step="1" value="3" aria-label="Heures" /> h
+            <select id="loop-min" aria-label="Minutes">
+              <option value="0">00</option>
+              <option value="15">15</option>
+              <option value="30">30</option>
+              <option value="45">45</option>
+            </select>
+          </span>
+        </div>
+        <div class="field hidden" id="loop-field-speed">
+          <span class="label">Moyenne sur le plat</span>
+          <span class="km-input"><input id="loop-speed" type="number" min="10" max="60" step="1" value="27" /> km/h</span>
+        </div>
+        <p id="loop-time-hint" class="hint small hidden">La durée tient compte du dénivelé : plus ça grimpe, plus la boucle est courte.</p>
         <div class="field">
           <span class="label">Direction</span>
           <select id="loop-dir">
@@ -504,6 +533,36 @@
         </div>
       </div>
       <div id="toast" class="toast hidden" role="alert"></div>
+
+      <!-- Mode navigation : guidage GPS le long de l'itinéraire -->
+      <section id="nav" class="nav-ui hidden" aria-label="Navigation">
+        <div id="nav-banner" class="nav-banner glass" aria-live="polite">
+          <div id="nav-icon" class="nav-icon" aria-hidden="true"></div>
+          <div class="nav-next">
+            <b id="nav-dist">—</b>
+            <span id="nav-text"></span>
+          </div>
+          <div id="nav-then" class="nav-then hidden">
+            <small>puis</small>
+            <span id="nav-then-icon" class="nav-icon" aria-hidden="true"></span>
+          </div>
+        </div>
+        <p id="nav-alert" class="nav-alert hidden" role="status"></p>
+        <div class="nav-fabs">
+          <button id="nav-recenter" class="nav-fab accent hidden" title="Recentrer sur ma position" aria-label="Recentrer sur ma position">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20 12 4l7 16-7-4z" /></svg>
+          </button>
+          <button id="nav-sound" class="nav-fab" aria-label="Annonces sonores" aria-pressed="true">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5z" /><path class="waves" d="M15.5 9a4.2 4.2 0 0 1 0 6M18 6.5a7.8 7.8 0 0 1 0 11" /><path class="mute" d="m15.5 9.5 5 5m0-5-5 5" /></svg>
+          </button>
+        </div>
+        <div class="nav-bar glass">
+          <div class="nav-stat hero"><b id="nav-remaining">—</b><small>restants</small></div>
+          <div class="nav-stat"><b id="nav-eta">—</b><small id="nav-eta-label">arrivée</small></div>
+          <div class="nav-stat"><b id="nav-speed">—</b><small>km/h</small></div>
+          <button id="nav-stop" class="btn nav-stop">Arrêter</button>
+        </div>
+      </section>
     </main>
 
     <section id="profile" class="profile glass route-only hidden" aria-label="Profil altimétrique">

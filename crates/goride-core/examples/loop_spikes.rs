@@ -34,7 +34,7 @@ fn main() {
     let km: f64 = a[4].parse().unwrap();
     let (mut total, mut with_spike, mut count, mut spurs) = (0, 0, 0, 0);
     for seed in 0..20 {
-        let req = LoopRequest { start, distance_m: km * 1000.0, tolerance: 0.05, count: 5, seed, heading_deg: None };
+        let req = LoopRequest { start, distance_m: km * 1000.0, tolerance: 0.05, count: 5, seed, heading_deg: None, duration_s: None, flat_speed_kmh: None };
         for l in propose_loops(&r, &req, &RouteOptions::default(), &[]).unwrap() {
             let coords: Vec<[f64; 2]> = l.legs.iter().flat_map(|g| g.coords.iter().copied()).collect();
             // Petits allers-retours aux points de passage : l'étape suivante repart par le chemin d'arrivée

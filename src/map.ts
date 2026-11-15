@@ -65,9 +65,13 @@ function arrowLayer(id: string, source: string, filter?: maplibregl.FilterSpecif
   };
 }
 
-/** Point de départ de la caméra après l'ouverture. */
-const HOME: [number, number] = [-1.68, 48.11]; // Rennes
-const HOME_ZOOM = 10.6;
+/** Vue d'ouverture : la France métropolitaine entière (ouest, sud, est, nord), Corse comprise. */
+const FRANCE: [[number, number], [number, number]] = [
+  [-5.3, 41.2],
+  [9.7, 51.2],
+];
+/** Zoom d'arrivée quand on ouvre sur la position de l'utilisateur. */
+const HERE_ZOOM = 12;
 /** Exagération du relief en 3D. */
 const TERRAIN_EXAGGERATION = 1.35;
 /** Inclinaison et cap de la caméra quand on bascule en 3D avec le bouton. */
@@ -127,6 +131,15 @@ export class TrackMap {
   /** Trace dessinée sur la couche « track » (import ou sortie). */
   private shownTrack: Track | null = null;
   private loopStart: maplibregl.Marker | null = null;
+  /** Contours de la France (chargés à part) : tout le reste est grisé, l'appli n'y trace pas. */
+  private franceMask: FeatureCollection = EMPTY;
+  private franceEdge: FeatureCollection = EMPTY;
+  /** Vrai dès que l'utilisateur a déplacé la carte ou qu'un tracé a été cadré. */
+  private moved = false;
+  /** Mode navigation : les clics sur la carte ne tracent rien et n'ouvrent pas de fiche. */
+  locked = false;
+  private navDone: FeatureCollection = EMPTY;
+  private navLink: FeatureCollection = EMPTY;
 
   constructor(container: HTMLElement, private onHover: (index: number | null) => void) {
     this.ready = new Promise((res) => (this.resolveReady = res));
@@ -155,6 +168,10 @@ export class TrackMap {
     });
     this.map.on("mouseout", () => this.onHover(null));
     this.map.on("rotate", () => this.onBearing?.(this.map.getBearing()));
+    this.map.on("movestart", (e) => {
+      if ((e as { originalEvent?: Event }).originalEvent) this.moved = true;
+    });
+    this.loadFranceMask();
 
     // Inclinaison à la souris (clic droit + glisser) : la 3D s'active ou se coupe d'elle-même.
     this.map.on("pitch", (e) => {
@@ -166,7 +183,7 @@ export class TrackMap {
 
     this.installRouteDrag();
     this.map.on("click", (e) => {
-      if (Date.now() < this.quietClickUntil) return;
+      if (this.locked || Date.now() < this.quietClickUntil) return;
       if (this.loopPicking) {
         const box: [maplibregl.PointLike, maplibregl.PointLike] = [
           [e.point.x - 6, e.point.y - 6],
@@ -348,23 +365,48 @@ export class TrackMap {
     return this.terrain3d;
   }
 
-  /** Vol d'ouverture : de la Terre vue de l'espace jusqu'à la région de départ. */
-  playIntro() {
-    if (this.track) return; // une trace a déjà été ouverte : on ne déplace pas la carte
-    if (reducedMotion()) {
-      this.map.jumpTo({ center: HOME, zoom: HOME_ZOOM });
-      return;
-    }
-    this.map.flyTo({
-      center: HOME,
-      zoom: HOME_ZOOM,
-      bearing: 0,
-      pitch: 0,
-      duration: 4600,
-      curve: 1.35,
-      easing: easeInOutCubic,
-      essential: true,
-    });
+  /**
+   * Vol d'ouverture : de la Terre vue de l'espace jusqu'à la position de l'utilisateur si on
+   * la connaît déjà, sinon jusqu'à la France entière.
+   */
+  playIntro(here: [number, number] | null = null) {
+    if (this.track || this.moved) return; // une trace a déjà été ouverte : on ne déplace pas la carte
+    const duration = reducedMotion() ? 0 : 4600;
+    const flight = { bearing: 0, pitch: 0, duration, curve: 1.35, easing: easeInOutCubic, essential: true };
+    if (here) this.map.flyTo({ center: here, zoom: HERE_ZOOM, ...flight });
+    else this.map.flyTo({ ...this.frameFrance(), ...flight });
+  }
+
+  /**
+   * Centre, zoom et décalage qui font tenir la France dans la place laissée par les panneaux.
+   * Calcul direct (projection de Mercator) plutôt que par la carte : sans fond de carte
+   * chargé (hors connexion), son propre calcul donnait un zoom aberrant.
+   */
+  private frameFrance() {
+    const [[w, s], [e, n]] = FRANCE;
+    const pad = this.freeArea();
+    const box = this.map.getContainer();
+    const mercY = (lat: number) => Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360)) / (2 * Math.PI);
+    const [ys, yn] = [mercY(s), mercY(n)];
+    const width = Math.max(120, box.clientWidth - pad.left - pad.right);
+    const height = Math.max(120, box.clientHeight - pad.top - pad.bottom);
+    // À zoom z, le monde mesure 512 × 2^z pixels de côté
+    const zoom = Math.log2(Math.min(width / (((e - w) / 360) * 512), height / ((yn - ys) * 512)));
+    const lat = (Math.atan(Math.exp(((ys + yn) / 2) * 2 * Math.PI)) * 360) / Math.PI - 90;
+    return {
+      center: [(w + e) / 2, lat] as [number, number],
+      zoom,
+      offset: [(pad.left - pad.right) / 2, (pad.top - pad.bottom) / 2] as [number, number],
+    };
+  }
+
+  /**
+   * Position connue après coup (le GPS a mis du temps, ou il a fallu répondre à la demande
+   * d'autorisation) : on y vole, sauf si l'utilisateur a déjà pris la carte en main.
+   */
+  flyHere(here: [number, number]) {
+    if (this.track || this.moved || this.routeData.features.length > 0) return;
+    this.map.flyTo({ center: here, zoom: HERE_ZOOM, duration: reducedMotion() ? 0 : 2600, curve: 1.35, easing: easeInOutCubic, essential: true });
   }
 
   setDrawing(on: boolean) {
@@ -525,6 +567,7 @@ export class TrackMap {
 
   fit(coords: [number, number][] | undefined = this.track?.coords) {
     if (!coords || coords.length === 0) return;
+    this.moved = true;
     this.map.resize();
     let [w, s, e, n] = [180, 90, -180, -90];
     for (const [lon, lat] of coords) {
@@ -540,6 +583,45 @@ export class TrackMap {
       easing: easeOutExpo,
       maxZoom: 16,
     });
+  }
+
+  /** Navigation : grise le début du tracé jusqu'à la position (null : rien de parcouru). */
+  setNavDone(coords: [number, number][] | null) {
+    this.navDone =
+      coords && coords.length > 1
+        ? { type: "FeatureCollection", features: [{ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: coords } }] }
+        : EMPTY;
+    this.map.getSource<GeoJSONSource>("nav-done")?.setData(this.navDone);
+  }
+
+  /** Navigation hors itinéraire : pointillé de la position au tracé (null : on est dessus). */
+  setNavLink(from: [number, number] | null, to: [number, number] | null = null) {
+    this.navLink =
+      from && to
+        ? { type: "FeatureCollection", features: [{ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: [from, to] } }] }
+        : EMPTY;
+    this.map.getSource<GeoJSONSource>("nav-link")?.setData(this.navLink);
+  }
+
+  /** Contours de la France, chargés à part pour ne pas alourdir le démarrage. */
+  private loadFranceMask() {
+    import("./data/france.json")
+      .then((mod) => {
+        const rings = mod.default as [number, number][][];
+        const world: [number, number][] = [[-180, -85], [180, -85], [180, 85], [-180, 85], [-180, -85]];
+        // Un seul polygone couvrant le monde, percé d'un trou par morceau de France
+        this.franceMask = {
+          type: "FeatureCollection",
+          features: [{ type: "Feature", properties: {}, geometry: { type: "Polygon", coordinates: [world, ...rings] } }],
+        };
+        this.franceEdge = {
+          type: "FeatureCollection",
+          features: [{ type: "Feature", properties: {}, geometry: { type: "MultiLineString", coordinates: rings } }],
+        };
+        this.map.getSource<GeoJSONSource>("outside-france")?.setData(this.franceMask);
+        this.map.getSource<GeoJSONSource>("france-edge")?.setData(this.franceEdge);
+      })
+      .catch((err) => console.warn("Contours de la France indisponibles :", err));
   }
 
   /** Affiche (ou cache, si null) le point courant sur la trace. */
@@ -618,14 +700,21 @@ export class TrackMap {
           (id) => shown(id)?.top ?? H,
         ),
       );
-      const top = (shown("dock")?.top ?? 100) + 10;
-      return { top, left: 30, right: 70, bottom: Math.max(40, H - bottomTop + 24) };
+      // En haut : sous la rangée des fonds de carte (à gauche du dock)
+      const basemaps = document.querySelector(".top-right .basemaps")?.getBoundingClientRect();
+      const top = Math.max(shown("dock")?.top ?? 100, basemaps?.bottom ?? 0) + 10;
+      // Un tiroir grand ouvert ne laisse presque rien : on cadre quand même dans au moins
+      // 200 px de carte, sinon le tracé finirait minuscule (ou la carte ne bougerait pas).
+      const bottom = Math.min(Math.max(40, H - bottomTop + 24), Math.max(40, H - top - 200));
+      return { top, left: 30, right: 70, bottom };
     }
     const left = Math.max(0, ...["stats", "loop-panel", "library-panel", "rides-panel"].map((id) => shown(id)?.right ?? 0));
-    const rightEdge = Math.min(W - 64, ...["settings", "ride-detail"].map((id) => shown(id)?.left ?? W));
-    const sheet = shown("profile") ?? shown("ride-chart");
+    const rightEdge = Math.min(W - 64, shown("ride-detail")?.left ?? W);
+    // En bas : le profil (ou les courbes) et la barre d'outils posée au-dessus. Les réglages
+    // du tracé, ouverts par-dessus la carte le temps d'un choix, ne comptent pas.
+    const bottomTop = Math.min(H, ...["profile", "ride-chart", "toolbar"].map((id) => shown(id)?.top ?? H));
     const top = (shown("dock")?.top ?? 90) + 24;
-    const pad = { top, left: left + 40, right: W - rightEdge + 40, bottom: sheet ? H - sheet.top + 36 : 60 };
+    const pad = { top, left: left + 40, right: W - rightEdge + 40, bottom: Math.max(60, H - bottomTop + 28) };
     // Fenêtre étroite : on rogne les marges pour garder au moins 160 px de carte.
     const squeezeX = Math.max(0, pad.left + pad.right - (W - 160));
     pad.left -= squeezeX / 2;
@@ -668,6 +757,38 @@ export class TrackMap {
           "hillshade-shadow-color": light ? "#3b3a40" : "#000000",
           "hillshade-highlight-color": "rgba(255, 236, 220, 0.16)",
           "hillshade-accent-color": "#000000",
+        },
+      },
+      firstSymbol,
+    );
+
+    // Hors de France : voile gris sous les étiquettes. GoRide n'a de réseau routier que pour la
+    // France métropolitaine ; le voile s'efface quand on voit la Terre entière (ouverture).
+    m.addSource("outside-france", { type: "geojson", data: this.franceMask, tolerance: 0.4 });
+    m.addLayer(
+      {
+        id: "outside-france",
+        type: "fill",
+        source: "outside-france",
+        paint: {
+          "fill-color": light ? "#8b8b93" : "#4b4b52",
+          "fill-opacity": ["interpolate", ["linear"], ["zoom"], 2, 0, 3.2, light ? 0.6 : 0.62],
+          "fill-antialias": false,
+        },
+      },
+      firstSymbol,
+    );
+    m.addSource("france-edge", { type: "geojson", data: this.franceEdge, tolerance: 0.4 });
+    m.addLayer(
+      {
+        id: "france-edge",
+        type: "line",
+        source: "france-edge",
+        layout: { "line-join": "round" },
+        paint: {
+          "line-color": light ? "rgba(20, 20, 23, 0.28)" : "rgba(255, 255, 255, 0.22)",
+          "line-width": ["interpolate", ["linear"], ["zoom"], 3, 0.6, 10, 1.4],
+          "line-opacity": ["interpolate", ["linear"], ["zoom"], 2, 0, 3.2, 1],
         },
       },
       firstSymbol,
@@ -782,6 +903,25 @@ export class TrackMap {
       },
     });
     m.addLayer(arrowLayer("loops-arrows", "loops", ["==", ["get", "sel"], 1]));
+
+    // Navigation : portion déjà parcourue (grisée par-dessus le tracé) et, hors itinéraire,
+    // trait pointillé jusqu'au point du tracé le plus proche.
+    m.addSource("nav-done", { type: "geojson", data: this.navDone, tolerance: 0.2 });
+    m.addLayer({
+      id: "nav-done",
+      type: "line",
+      source: "nav-done",
+      layout: { "line-cap": "round", "line-join": "round" },
+      paint: { "line-color": light ? "#a3a3ab" : "#6f6f78", "line-width": width(3.5, 7) },
+    });
+    m.addSource("nav-link", { type: "geojson", data: this.navLink });
+    m.addLayer({
+      id: "nav-link",
+      type: "line",
+      source: "nav-link",
+      layout: { "line-cap": "round" },
+      paint: { "line-color": light ? "#141417" : "#ffffff", "line-width": 3, "line-dasharray": [0.1, 2.2], "line-opacity": 0.85 },
+    });
 
     // Point courant (survol du profil ou de la trace)
     m.addSource("cursor", { type: "geojson", data: EMPTY });

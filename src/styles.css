@@ -1276,6 +1276,17 @@ input[type="number"]::-webkit-inner-spin-button {
   font-weight: 600;
   text-align: right;
 }
+.time-input {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.time-input input {
+  width: 56px;
+}
+.time-input select {
+  font-weight: 600;
+}
 .loop-list {
   display: grid;
   gap: 6px;
@@ -4605,7 +4616,7 @@ body.mobile .ride-detail {
   z-index: 7;
   max-height: var(--peek);
   overflow: hidden;
-  padding: 30px 16px 16px;
+  padding: 0 16px 16px; /* les 30 px du haut sont ceux de la poignée */
   transition: max-height 0.35s var(--ease), bottom 0.35s var(--ease);
   animation: sheet-in 0.4s var(--ease) backwards;
 }
@@ -4618,21 +4629,85 @@ body.mobile .ride-detail.expanded {
   overflow-y: auto;
   overscroll-behavior: contain;
 }
-/* Poignée : un toucher dans la bande du haut plie ou déplie le tiroir */
-body.mobile .stats::before,
-body.mobile .loop-panel::before,
-body.mobile .library-panel::before,
-body.mobile .rides-panel::before,
-body.mobile .ride-detail::before {
-  content: "";
-  position: absolute;
-  top: 11px;
-  left: 50%;
-  width: 40px;
-  height: 4px;
-  margin-left: -20px;
-  border-radius: 2px;
-  background: var(--line-2);
+/* Poignée : on la glisse pour agrandir ou réduire le tiroir, un toucher le plie ou le déplie.
+   Elle reste collée en haut du tiroir quand son contenu défile (sheets.ts). */
+.sheet-grip {
+  display: none;
+}
+body.mobile .sheet-grip {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  order: -1;
+  flex: none;
+  grid-column: 1 / -1;
+  display: grid;
+  place-items: center;
+  height: 30px;
+  /* pleine largeur ; le retrait du bas annule l'écart que le panneau met entre ses éléments */
+  margin: 0 -16px calc(-1 * var(--sheet-gap, 0px));
+  touch-action: none;
+  cursor: grab;
+}
+/* Contenu qui a défilé : la poignée devient un bandeau opaque, rien ne transparaît dessous */
+body.mobile .sheet.scrolled .sheet-grip {
+  background: var(--glass-strong);
+  -webkit-backdrop-filter: var(--blur);
+  backdrop-filter: var(--blur);
+  box-shadow: 0 1px 0 var(--line);
+}
+body.mobile .sheet-grip i {
+  width: 46px;
+  height: 5px;
+  border-radius: 3px;
+  background: rgb(var(--tint) / 0.34);
+  transition:
+    background 0.2s var(--ease),
+    width 0.2s var(--ease);
+}
+body.mobile .sheet.dragging {
+  transition: none;
+}
+body.mobile .sheet.dragging .sheet-grip {
+  cursor: grabbing;
+}
+body.mobile .sheet.dragging .sheet-grip i {
+  width: 58px;
+  background: var(--accent);
+}
+/* Replié, le tiroir se tire vers le haut de n'importe où (rien n'y défile) */
+body.mobile .sheet:not(.expanded),
+body.mobile .sheet:not(.expanded) * {
+  touch-action: none;
+}
+body.mobile .loop-panel {
+  --sheet-gap: 14px;
+}
+body.mobile .library-panel,
+body.mobile .rides-panel {
+  --sheet-gap: 12px;
+}
+/* Sonde invisible : donne en pixels la hauteur réservée en haut de l'écran */
+.sheet-top-probe {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: var(--top);
+  visibility: hidden;
+  pointer-events: none;
+}
+/* Réglages du tracé ouverts : ils occupent seuls le bas de l'écran. Tiroirs, profil et
+   consigne s'effacent le temps du réglage et reviennent à la fermeture — plus rien n'est
+   caché derrière autre chose. */
+body.mobile.settings-open .sheet,
+body.mobile.settings-open .profile,
+body.mobile.settings-open #empty {
+  display: none !important;
+}
+/* La consigne de tracé passerait sous le tiroir de la bibliothèque */
+body.mobile:has(#library-panel:not(.hidden)) #empty {
+  display: none;
 }
 body.mobile .card h2 {
   white-space: normal;
@@ -4645,8 +4720,7 @@ body.mobile:has(#ride-detail:not(.hidden)) #rides-panel {
   display: none;
 }
 body.mobile .ride-detail {
-  --peek: 150px;
-  padding-top: 26px;
+  --peek: 154px;
 }
 body.mobile .ride-back {
   margin: 0 0 10px -6px;
@@ -4669,7 +4743,7 @@ body.mobile .progress-panel {
 
 /* Itinéraire replié : titre puis distance, dénivelé et temps sur une ligne */
 body.mobile .stats {
-  --peek: 126px;
+  --peek: 134px;
   display: flex;
   flex-direction: column;
 }
@@ -4693,6 +4767,25 @@ body.mobile .stats > .save-btn {
 }
 body.mobile .stats > :not(h2, dl, .save-btn, .eyebrow) {
   order: 4;
+}
+body.mobile .stats > .sheet-grip {
+  order: -1;
+}
+/* Démarrer la navigation : à droite du titre, à portée de pouce même tiroir replié */
+body.mobile .stats > .nav-start {
+  position: absolute;
+  top: 30px;
+  right: 14px;
+  z-index: 1;
+  height: 34px;
+  padding: 0 13px 0 10px;
+  font-size: 13px;
+}
+body.mobile .stats > h2 {
+  display: flex;
+  align-items: center;
+  min-height: 34px;
+  padding-right: 124px;
 }
 body.mobile .stats dl > div,
 body.mobile .stats dl > .hero,
@@ -4773,4 +4866,301 @@ body.mobile .maplibregl-canvas-container {
   -webkit-user-select: none;
   user-select: none;
   -webkit-touch-callout: none;
+}
+
+
+/* ==========================================================================
+   Mode navigation : guidage GPS le long de l'itinéraire
+   ========================================================================== */
+
+.nav-preview {
+  margin-top: 10px;
+}
+
+/* Pendant le guidage, il ne reste que la carte, le bandeau et la barre du bas */
+body.navigating .topbar,
+body.navigating .dock,
+body.navigating .tooldock,
+body.navigating .card,
+body.navigating .profile,
+body.navigating .vignette,
+body.navigating .wp,
+body.navigating .maplibregl-ctrl-bottom-left {
+  display: none !important;
+}
+
+.nav-ui {
+  --nav-w: min(480px, calc(100% - 2 * var(--gap)));
+  position: absolute;
+  inset: 0;
+  z-index: 9;
+  pointer-events: none;
+}
+.nav-ui > * {
+  pointer-events: auto;
+}
+
+/* Bandeau : prochaine direction */
+.nav-banner {
+  position: absolute;
+  top: var(--gap);
+  left: 50%;
+  translate: -50% 0;
+  width: var(--nav-w);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 84px;
+  padding: 12px 16px 12px 14px;
+  border-left: 4px solid var(--accent);
+  background: var(--glass-strong);
+  animation: card-in 0.45s var(--ease) backwards;
+}
+.nav-banner.off {
+  border-left-color: var(--amber);
+}
+.nav-banner.done {
+  border-left-color: var(--green);
+}
+.nav-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  color: var(--accent);
+  transition: transform 0.4s var(--ease);
+}
+.nav-banner.off .nav-icon {
+  color: var(--amber);
+}
+.nav-banner.done .nav-icon {
+  color: var(--green);
+}
+.nav-icon svg {
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 4.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.nav-next {
+  min-width: 0;
+  flex: 1;
+}
+.nav-next b {
+  display: block;
+  font-size: 31px;
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: -0.025em;
+  font-variant-numeric: tabular-nums;
+}
+.nav-next span {
+  display: block;
+  margin-top: 3px;
+  font-size: 15px;
+  color: var(--text-2);
+}
+.nav-then {
+  flex: none;
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  padding-left: 12px;
+  border-left: 1px solid var(--line);
+}
+.nav-then small {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+.nav-then .nav-icon {
+  width: 34px;
+  height: 34px;
+  color: var(--text);
+}
+.nav-spinner {
+  width: 30px;
+  height: 30px;
+  border: 3px solid rgb(var(--tint) / 0.16);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: nav-spin 0.9s linear infinite;
+}
+@keyframes nav-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Message sous le bandeau : GPS faible, aperçu… */
+.nav-alert {
+  position: absolute;
+  top: calc(var(--gap) + 94px);
+  left: 50%;
+  translate: -50% 0;
+  max-width: var(--nav-w);
+  margin: 0;
+  padding: 7px 13px;
+  background: var(--amber);
+  color: #17120a;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  box-shadow: var(--shadow);
+}
+.nav-alert.info {
+  background: var(--glass-strong);
+  border: 1px solid var(--line);
+  color: var(--text-2);
+  font-weight: 500;
+}
+
+/* Barre du bas : ce qu'il reste, heure d'arrivée, vitesse, arrêt */
+.nav-bar {
+  position: absolute;
+  left: 50%;
+  bottom: var(--gap);
+  translate: -50% 0;
+  width: var(--nav-w);
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 11px 12px 11px 18px;
+  background: var(--glass-strong);
+  animation: sheet-in 0.45s var(--ease) backwards;
+}
+.nav-stat {
+  min-width: 0;
+}
+.nav-stat b {
+  display: block;
+  font-size: 20px;
+  font-weight: 500;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.nav-stat.hero b {
+  font-size: 25px;
+  font-weight: 600;
+}
+.nav-stat small {
+  display: block;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--text-2);
+}
+.nav-stop {
+  flex: none;
+  height: 46px;
+  margin-left: auto;
+  padding: 0 18px;
+  background: var(--red);
+  border-color: var(--red);
+  color: #fff;
+  font-weight: 600;
+}
+.nav-stop:hover {
+  background: #f0575c;
+  border-color: #f0575c;
+}
+
+/* Boutons ronds au-dessus de la barre : recentrer, son */
+.nav-fabs {
+  position: absolute;
+  right: max(var(--gap), calc(50% - var(--nav-w) / 2));
+  bottom: calc(var(--gap) + 86px);
+  display: grid;
+  gap: 10px;
+}
+.nav-fab {
+  display: grid;
+  place-items: center;
+  width: 50px;
+  height: 50px;
+  padding: 0;
+  border: 1px solid var(--line-2);
+  border-radius: 50%;
+  background: var(--glass-strong);
+  -webkit-backdrop-filter: var(--blur);
+  backdrop-filter: var(--blur);
+  color: var(--text);
+  box-shadow: var(--shadow);
+  cursor: pointer;
+}
+.nav-fab svg {
+  width: 23px;
+  height: 23px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.nav-fab.accent {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.nav-fab .mute,
+.nav-fab.off .waves {
+  display: none;
+}
+.nav-fab.off .mute {
+  display: inline;
+}
+.nav-fab.off {
+  color: var(--text-2);
+}
+
+/* Ma position : pastille orange avec une pointe dans le sens de la marche */
+.nav-puck {
+  width: 44px;
+  height: 44px;
+  filter: drop-shadow(0 3px 8px rgba(0, 0, 0, 0.55));
+}
+.nav-puck svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.nav-puck circle {
+  fill: var(--accent);
+  stroke: #fff;
+  stroke-width: 3;
+}
+.nav-puck path {
+  fill: #fff;
+}
+
+body.mobile .nav-ui {
+  --nav-w: calc(100% - 2 * var(--gap));
+}
+body.mobile .nav-banner {
+  top: var(--safe-t);
+}
+body.mobile .nav-alert {
+  top: calc(var(--safe-t) + 94px);
+}
+body.mobile .nav-bar {
+  bottom: var(--safe-b);
+  gap: 14px;
+  padding-left: 14px;
+}
+body.mobile .nav-fabs {
+  right: var(--gap);
+  bottom: calc(var(--safe-b) + 84px);
+}
+body.mobile.navigating .toast {
+  bottom: calc(var(--safe-b) + 84px);
 }
