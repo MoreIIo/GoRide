@@ -19,6 +19,7 @@ use goride_core::graph::elevation::compute_elevation;
 use goride_core::graph::pbf::{graph_from_pbfs, BuildStep};
 use regions::Regions;
 use goride_core::graph::{merge_graphs, Graph, FORMAT_VERSION};
+use goride_core::guidance::{maneuvers, Maneuver};
 use goride_core::loops::{propose_loops, LoopProposal, LoopRequest};
 use goride_core::osm_tags::{RoadClass, Surface};
 use goride_core::route_track::{summarize, RouteSummary};
@@ -472,6 +473,16 @@ async fn summarize_route(
 ) -> Result<RouteSummary, String> {
     let dem = st.dem.clone();
     tauri::async_runtime::spawn_blocking(move || summarize(&coords, &surface, &class, Some(&dem)))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Mode navigation : changements de direction à annoncer le long d'un itinéraire.
+/// Le réseau chargé sert à reconnaître les carrefours ; sans lui, seule la forme du tracé compte.
+#[tauri::command]
+async fn route_guidance(st: State<'_, AppState>, coords: Vec<[f64; 2]>) -> Result<Vec<Maneuver>, String> {
+    let router = st.router.read().unwrap().clone();
+    tauri::async_runtime::spawn_blocking(move || maneuvers(router.as_deref(), &coords))
         .await
         .map_err(|e| e.to_string())
 }
@@ -1449,6 +1460,7 @@ pub fn run() {
             snap_point,
             route_leg,
             summarize_route,
+            route_guidance,
             loop_proposals,
             import_activities,
             ride_progress,

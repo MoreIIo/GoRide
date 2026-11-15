@@ -5,6 +5,7 @@
 //! - `router` : accroche au réseau et plus court chemin
 //! - `dem` / `route_track` : altitude et bilan d'un itinéraire tracé
 //! - `workout` : séances structurées et export FIT pour Garmin
+//! - `guidance` : changements de direction d'un itinéraire (mode navigation)
 //!
 //! Tests : `cargo test -p goride-core`.
 
@@ -17,6 +18,7 @@ pub mod gpx_export;
 pub mod gpx_import;
 pub mod loops;
 pub mod graph;
+pub mod guidance;
 pub mod osm_tags;
 pub mod route_track;
 pub mod router;
